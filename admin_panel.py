@@ -82,12 +82,12 @@ _DEFAULT_GLOBAL_CONSTANTS_FALLBACK: Dict[str, Any] = {
     }
 }
 _DEFAULT_FEED_IN_TARIFFS_FALLBACK: Dict[str, List[Dict[str, Any]]] = {
-    "parts": [{"kwp_min": 0.0, "kwp_max": 10.0, "ct_per_kwh": 7.94},
-              {"kwp_min": 10.01, "kwp_max": 40.0, "ct_per_kwh": 6.88},
-              {"kwp_min": 40.01, "kwp_max": 100.0, "ct_per_kwh": 5.62}],
-    "full": [{"kwp_min": 0.0, "kwp_max": 10.0, "ct_per_kwh": 12.60},
-             {"kwp_min": 10.01, "kwp_max": 40.0, "ct_per_kwh": 10.56},
-             {"kwp_min": 40.01, "kwp_max": 100.0, "ct_per_kwh": 10.56}] 
+    "parts": [{"kwp_min": 0.0, "kwp_max": 10.0, "ct_per_kwh": 7.86},
+              {"kwp_min": 10.01, "kwp_max": 40.0, "ct_per_kwh": 6.80},
+              {"kwp_min": 40.01, "kwp_max": 100.0, "ct_per_kwh": 5.56}],
+    "full": [{"kwp_min": 0.0, "kwp_max": 10.0, "ct_per_kwh": 12.47},
+             {"kwp_min": 10.01, "kwp_max": 40.0, "ct_per_kwh": 10.45},
+             {"kwp_min": 40.01, "kwp_max": 100.0, "ct_per_kwh": 10.45}] 
 }
 
 def _dummy_load_admin_setting(key, default=None):

@@ -124,148 +124,160 @@ Schriftart: Helvetica-Regular
 Schriftgröße: 9.989105224609375
 Farbe: 3487029
 ----------------------------------------
-Text: RENTABILITÄT | VERGLEICH | KOSTENENTWICKLUNG  
+Text: RENTABILITÄT | KOSTENENTWICKLUNG  
 Position: (25.64636993408203, 72.60176086425781, 317.662841796875, 109.49519348144531)
 Schriftart: Helvetica-Bold
 Schriftgröße: 21.0
 Farbe: 3487029
 ----------------------------------------
 Text: Berechnungsgrundlagen
-Position: (39.64636993408203, 615.4085693359375, 171.18783569335938, 631.221435546875)
+Position: (39.64636993408203, 645.4085693359375, 171.18783569335938, 661.221435546875)
 Schriftart: Helvetica-Bold
 Schriftgröße: 11.989923477172852
 Farbe: 3487029
 ----------------------------------------
 Text: Energieversorger
-Position: (39.64636993408203, 636.0878295898438, 100.26534271240234, 646.6231689453125)
+Position: (39.64636993408203, 669.0878295898438, 100.26534271240234, 679.6231689453125)
 Schriftart: Helvetica-Regular
 Schriftgröße: 7.98828649520874
 Farbe: 3487029
 ----------------------------------------
 Text: Standard DE
-Position: (266.3659973144531, 636.0878295898438, 311.075439453125, 646.6231689453125)
-Schriftart: Helvetica-Regular
+Position: (266.3659973144531, 669.0878295898438, 311.075439453125, 679.6231689453125)
+Schriftart: Helvetica-Bold
 Schriftgröße: 7.98828649520874
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
 Text: Unterhalt PV
-Position: (334.4767150878906, 636.0878295898438, 379.9907531738281, 646.6231689453125)
+Position: (334.4767150878906, 669.0878295898438, 379.9907531738281, 679.6231689453125)
 Schriftart: Helvetica-Regular
 Schriftgröße: 7.98828649520874
 Farbe: 3487029
 ----------------------------------------
 Text: 1 % Invest. p.a.
-Position: (490.2286376953125, 636.0878295898438, 543.7837524414062, 646.6231689453125)
-Schriftart: Helvetica-Regular
+Position: (490.2286376953125, 669.0878295898438, 543.7837524414062, 679.6231689453125)
+Schriftart: Helvetica-Bold
 Schriftgröße: 7.98828649520874
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
 Text: Stromprodukt
-Position: (39.64636993408203, 653.3233642578125, 89.23523712158203, 663.8587036132812)
+Position: (39.64636993408203, 706.3233642578125, 89.23523712158203, 716.8587036132812)
 Schriftart: Helvetica-Regular
 Schriftgröße: 7.98828649520874
 Farbe: 3487029
 ----------------------------------------
 Text: Verbrauch 32 Cent
-Position: (244.71621704101562, 653.3233642578125, 311.0791931152344, 663.8587036132812)
-Schriftart: Helvetica-Regular
+Position: (244.71621704101562, 706.3233642578125, 311.0791931152344, 716.8587036132812)
+Schriftart: Helvetica-Bold
 Schriftgröße: 7.98828649520874
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
 Text: Unterhalt Batterie
-Position: (334.4767150878906, 653.3233642578125, 398.0399169921875, 663.8587036132812)
+Position: (334.4767150878906, 688.5588989257812, 398.0399169921875, 698.09423828125)
 Schriftart: Helvetica-Regular
 Schriftgröße: 7.98828649520874
 Farbe: 3487029
 ----------------------------------------
 Text: 1 % Invest. p.a.
-Position: (490.2286376953125, 653.3233642578125, 543.7837524414062, 663.8587036132812)
-Schriftart: Helvetica-Regular
+Position: (490.2286376953125, 688.5588989257812, 543.7837524414062, 698.09423828125)
+Schriftart: Helvetica-Bold
 Schriftgröße: 7.98828649520874
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
 Text: PV-Nutzungsdauer
-Position: (39.64636993408203, 670.5588989257812, 106.632568359375, 681.09423828125)
+Position: (39.64636993408203, 688.5588989257812, 106.632568359375, 698.09423828125)
 Schriftart: Helvetica-Regular
 Schriftgröße: 7.98828649520874
 Farbe: 3487029
 ----------------------------------------
 Text: 20 Jahre
-Position: (279.8780822753906, 670.5588989257812, 311.0821228027344, 681.09423828125)
-Schriftart: Helvetica-Regular
+Position: (279.8780822753906, 688.5588989257812, 311.0821228027344, 698.09423828125)
+Schriftart: Helvetica-Bold
 Schriftgröße: 7.98828649520874
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
 Text: Inflation Strompreise
-Position: (334.4767150878906, 670.5588989257812, 410.02203369140625, 681.09423828125)
+Position: (334.4767150878906, 706.3233642578125, 410.02203369140625, 716.8587036132812)
 Schriftart: Helvetica-Regular
 Schriftgröße: 7.98828649520874
 Farbe: 3487029
 ----------------------------------------
 Text: 5,00 % jährlich
-Position: (492.3596496582031, 670.5588989257812, 543.7725830078125, 681.09423828125)
-Schriftart: Helvetica-Regular
+Position: (492.3596496582031, 706.3233642578125, 543.7725830078125, 716.8587036132812)
+Schriftart: Helvetica-Bold
 Schriftgröße: 7.98828649520874
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
 Text: Eigenkapitalkosten
-Position: (39.64636993408203, 687.7943725585938, 108.15330505371094, 698.3297119140625)
+Position: (39.64636993408203, 724.7943725585938, 108.15330505371094, 735.3297119140625)
 Schriftart: Helvetica-Regular
 Schriftgröße: 7.98828649520874
 Farbe: 3487029
 ----------------------------------------
 Text: 1 %
-Position: (298.7528381347656, 687.7943725585938, 311.0726623535156, 698.3297119140625)
-Schriftart: Helvetica-Regular
+Position: (298.7528381347656, 724.7943725585938, 311.0726623535156, 735.3297119140625)
+Schriftart: Helvetica-Bold
 Schriftgröße: 7.98828649520874
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
 Text: 10 JAHRE STROMKOSTEN SIMULATION   |   20 JAHRE STROMKOSTEN SIMULATION
 Position: (54.93820571899414, 140.46725463867188, 213.7730255126953, 158.90902709960938)
 Schriftart: Helvetica-Bold
 Schriftgröße: 11.983247756958008
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
-Text: RENDITE
+Text: EINNAHMEN & EINSPARUNGEN
 Position: (54.93820571899414, 463.4458312988281, 111.37731170654297, 481.8876037597656)
 Schriftart: Helvetica-Bold
 Schriftgröße: 13.983247756958008
 Farbe: 3487029
 ----------------------------------------
-Text: Ohne Batteriespeichersystem
-Position: (39.64636993408203, 515.5908203125, 172.14813232421875, 528.7649536132812)
+Text: Einsparung durch Eigenverbrauch
+Position: (39.64636993408203, 513.5908203125, 172.14813232421875, 526.7649536132812)
 Schriftart: Helvetica-Bold
 Schriftgröße: 9.989105224609375
 Farbe: 3487029
 ----------------------------------------
 Text: 12,7%
-Position: (256.0504455566406, 515.5908203125, 283.1981201171875, 528.7649536132812)
+Position: (250.0504455566406, 513.5908203125, 277.1981201171875, 526.7649536132812)
 Schriftart: Helvetica-Bold
 Schriftgröße: 9.989105224609375
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
-Text: Mit Batteriespeichersystem
-Position: (39.64636993408203, 540.3200073242188, 163.63323974609375, 553.494140625)
+Text: 123%
+Position: (250.0504455566406, 562.1432495117188, 277.1981201171875, 572.6785888671875)
+Schriftart: Helvetica-Bold
+Schriftgröße: 9.989105224609375
+Farbe: 866432
+----------------------------------------
+Text: 321%
+Position: (250.0504455566406, 585.8850708007812, 277.1981201171875, 595.42041015625)
+Schriftart: Helvetica-Bold
+Schriftgröße: 9.989105224609375
+Farbe: 866432
+----------------------------------------
+Text: Einnahmen aus Einspeisevergütung
+Position: (39.64636993408203, 537.3200073242188, 163.63323974609375, 550.494140625)
 Schriftart: Helvetica-Bold
 Schriftgröße: 9.989105224609375
 Farbe: 3487029
 ----------------------------------------
 Text: 9,7%
-Position: (261.7878112792969, 540.3200073242188, 283.2052307128906, 553.494140625)
+Position: (250.0504455566406, 537.3200073242188, 277.1981201171875, 550.494140625)
 Schriftart: Helvetica-Bold
 Schriftgröße: 9.989105224609375
+Farbe: 866432
+----------------------------------------
+Text: Einsparung durch Batterieladung
+Position: (39.64636993408203, 562.1432495117188, 163.63323974609375, 572.6785888671875)
+Schriftart: Helvetica-Bold
+Schriftgröße: 9.98828649520874
 Farbe: 3487029
 ----------------------------------------
-Text:  Der interne Zinsfuß entspricht der mittleren, jährlichen
-Position: (50.9688835144043, 570.1432495117188, 252.3860626220703, 580.6785888671875)
-Schriftart: Helvetica-Regular
-Schriftgröße: 7.98828649520874
-Farbe: 3487029
-----------------------------------------
-Text: Rendite Ihres Kapitals über die gesamte Laufzeit.
-Position: (58.603092193603516, 579.8850708007812, 234.56060791015625, 590.42041015625)
-Schriftart: Helvetica-Regular
-Schriftgröße: 7.98828649520874
+Text: Einsparung aus Batterieüberschuss
+Position: (39.64636993408203, 585.8850708007812, 163.63323974609375, 595.42041015625)
+Schriftart: Helvetica-Bold
+Schriftgröße: 9.98828649520874
 Farbe: 3487029
 ----------------------------------------
 Text: PRODUKTIONSKOSTEN
@@ -281,10 +293,10 @@ Schriftgröße: 9.989105224609375
 Farbe: 3487029
 ----------------------------------------
 Text: 8,9 Cent
-Position: (517.7562866210938, 515.5908203125, 555.0728149414062, 528.7649536132812)
+Position: (512.7562866210938, 515.5908203125, 555.0728149414062, 528.7649536132812)
 Schriftart: Helvetica-Bold
 Schriftgröße: 9.989105224609375
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
 Text: Mit Batteriespeichersystem
 Position: (311.5272521972656, 540.3200073242188, 435.51409912109375, 553.494140625)
@@ -296,19 +308,19 @@ Text: 13,5 Cent
 Position: (512.0306396484375, 540.3200073242188, 555.077392578125, 553.494140625)
 Schriftart: Helvetica-Bold
 Schriftgröße: 9.989105224609375
+Farbe: 866432
+----------------------------------------
+Text: Einsparungen pro Jahr ( gesamt )
+Position: (39.64636993408203, 637.1432495117188, 163.63323974609375, 627.6785888671875)
+Schriftart: Helvetica-Bold
+Schriftgröße: 9.98828649520874
 Farbe: 3487029
 ----------------------------------------
-Text:  Über Nutzungsdauer der Photovoltaikanlage inkl.
-Position: (322.8497619628906, 570.1432495117188, 506.1451721191406, 580.6785888671875)
-Schriftart: Helvetica-Regular
-Schriftgröße: 7.98828649520874
-Farbe: 3487029
-----------------------------------------
-Text: Kapitalkosten sowie Investition und Unterhalt.
-Position: (330.4839782714844, 579.8850708007812, 495.8904113769531, 590.42041015625)
-Schriftart: Helvetica-Regular
-Schriftgröße: 7.98828649520874
-Farbe: 3487029
+Text: Gesamt
+Position: (250.0504455566406, 637.1432495117188, 277.1981201171875, 627.6785888671875)
+Schriftart: Helvetica-Bold
+Schriftgröße: 9.98828649520874
+Farbe: 866432
 ----------------------------------------
 Text: tom-90
 Position: (39.658077239990234, 814.5894775390625, 72.79461669921875, 827.7636108398438)

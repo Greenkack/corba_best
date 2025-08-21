@@ -8,7 +8,7 @@ Text: mit den folgenden innovativen Komponenten:
 Position: (129.64636993408203, 116.02395629882812, 592.90277099609375, 137.0892333984375)
 Schriftart: Helvetica-Bold
 Schriftgröße: 15.978275299072266
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
 Text: Hersteller:
 Position: (238.6392822265625, 241.14645385742188, 284.6602478027344, 244.31101989746094)
@@ -20,7 +20,7 @@ Text: Modul-Hersteller
 Position: (360.0, 241.14645385742188, 500.0, 244.31101989746094)
 Schriftart: Helvetica-Regular
 Schriftgröße: 9.985486030578613
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
 Text: Modell | Typ:
 Position: (238.6392822265625, 246.871826171875, 320.0, 260.036376953125)
@@ -32,7 +32,7 @@ Text: Modul-Modell
 Position: (360.0, 246.871826171875, 500.0, 260.036376953125)
 Schriftart: Helvetica-Regular
 Schriftgröße: 9.985486030578613
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
 Text: Leistung pro PV-Modul:
 Position: (238.6392822265625, 262.5971984863281, 360.0, 275.7617492675781)
@@ -44,7 +44,7 @@ Text: Leistung pro PV-Modul
 Position: (360.0, 262.5971984863281, 500.0, 275.7617492675781)
 Schriftart: Helvetica-Regular
 Schriftgröße: 9.985486030578613
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
 Text: PV-Zellentechnologie:
 Position: (238.6392822265625, 278.32257080078125, 360.0, 291.48712158203125)
@@ -56,7 +56,7 @@ Text: PV-Zellentechnologie1
 Position: (360.0, 278.32257080078125, 500.0, 291.48712158203125)
 Schriftart: Helvetica-Regular
 Schriftgröße: 9.985486030578613
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
 Text: Modulaufbau:
 Position: (238.6392822265625, 294.0479431152344, 360.0, 307.2124938964844)
@@ -68,7 +68,7 @@ Text: Modulaufbau1
 Position: (360.0, 294.0479431152344, 500.0, 307.2124938964844)
 Schriftart: Helvetica-Regular
 Schriftgröße: 9.985486030578613
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
 Text: Solarzellen:
 Position: (238.6392822265625, 309.7733154296875, 320.0, 322.9378662109375)
@@ -80,7 +80,7 @@ Text: Solarzellen1
 Position: (360.0, 309.7733154296875, 500.0, 322.9378662109375)
 Schriftart: Helvetica-Regular
 Schriftgröße: 9.985486030578613
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
 Text: Version:
 Position: (238.6392822265625, 325.4986877441406, 320.0, 338.6632385253906)
@@ -92,7 +92,7 @@ Text: Version1
 Position: (360.0, 325.4986877441406, 500.0, 338.6632385253906)
 Schriftart: Helvetica-Regular
 Schriftgröße: 9.985486030578613
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
 Text: Garantie:
 Position: (238.6392822265625, 341.22406005859375, 322.3141784667969, 354.38861083984375)
@@ -100,11 +100,11 @@ Schriftart: Helvetica-Bold
 Schriftgröße: 9.985486030578613
 Farbe: 3487029
 ----------------------------------------
-Text: Modul-Garantie1
+Text: siehe Produktdatenblatt anbei
 Position: (360.0, 341.22406005859375, 500.0, 354.38861083984375)
 Schriftart: Helvetica-Regular
 Schriftgröße: 9.985486030578613
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
 Text: 
 Position: ()
@@ -128,7 +128,7 @@ Text: WR-Hersteller
 Position: (360.0, 417.8227844238281, 500.0, 430.9873352050781)
 Schriftart: Helvetica-Regular
 Schriftgröße: 9.985486030578613
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
 Text: Modell | Typ:
 Position: (238.6392822265625, 433.54815673828125, 320.0, 446.71270751953125)
@@ -140,7 +140,7 @@ Text: WR-Modell | Typ
 Position: (360.0, 433.54815673828125, 500.0, 446.71270751953125)
 Schriftart: Helvetica-Regular
 Schriftgröße: 9.985486030578613
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
 Text: Wechselrichterleistung:
 Position: (238.6392822265625, 449.2735290527344, 360.0, 462.4380798339844)
@@ -152,7 +152,7 @@ Text: WR-Leistung
 Position: (360.0, 449.2735290527344, 500.0, 462.4380798339844)
 Schriftart: Helvetica-Regular
 Schriftgröße: 9.985486030578613
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
 Text: Typ Wechselrichter:
 Position: (238.6392822265625, 464.9989013671875, 360.0, 478.1634521484375)
@@ -164,7 +164,7 @@ Text: WR-Typ
 Position: (360.0, 464.9989013671875, 500.0, 478.1634521484375)
 Schriftart: Helvetica-Regular
 Schriftgröße: 9.985486030578613
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
 Text: Schattenmanagement:
 Position: (238.6392822265625, 480.7242736816406, 360.0, 493.8888549804688)
@@ -176,7 +176,7 @@ Text: WR-Schattenmanagement
 Position: (360.0, 480.7242736816406, 500.0, 493.8888549804688)
 Schriftart: Helvetica-Regular
 Schriftgröße: 9.985486030578613
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
 Text: Notstromfähig:
 Position: (238.6392822265625, 496.4496459960938, 360.0, 509.6141967773438)
@@ -188,7 +188,7 @@ Text: WR-Notstrom
 Position: (360.0, 496.4496459960938, 500.0, 509.6141967773438)
 Schriftart: Helvetica-Regular
 Schriftgröße: 9.985486030578613
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
 Text: Smart Home:
 Position: (238.6392822265625, 512.1750183105469, 380.0, 525.339599609375)
@@ -200,7 +200,7 @@ Text: WR-Smart-Home
 Position: (360.0, 512.1750183105469, 500.0, 525.339599609375)
 Schriftart: Helvetica-Regular
 Schriftgröße: 9.985486030578613
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
 Text: Garantie:
 Position: (238.6392822265625, 527.900390625, 322.3141784667969, 541.06494140625)
@@ -208,11 +208,11 @@ Schriftart: Helvetica-Bold
 Schriftgröße: 9.985486030578613
 Farbe: 3487029
 ----------------------------------------
-Text: WR-Garantie-Text
+Text: siehe Produktdatenblatt anbei
 Position: (360.0, 527.900390625, 500.0, 541.06494140625)
 Schriftart: Helvetica-Regular
 Schriftgröße: 9.985486030578613
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
 Text: WR-Leistung (Titel)
 Position: (400.0, 350.7156066894531, 545.0, 369.1440124511719)
@@ -229,7 +229,7 @@ Text: Speicher-Hersteller
 Position: (360.0, 608.7971801757812, 500.0, 621.9617309570312)
 Schriftart: Helvetica-Regular
 Schriftgröße: 9.985486030578613
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
 Text: Modell | Typ:
 Position: (238.6392822265625, 624.5225219726562, 330.0, 637.6870727539062)
@@ -241,7 +241,7 @@ Text: Speicher-Modell | Typ
 Position: (360.0, 624.5225219726562, 500.0, 637.6870727539062)
 Schriftart: Helvetica-Regular
 Schriftgröße: 9.985486030578613
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
 Text: Speicherkapazität:
 Position: (238.6392822265625, 640.2479248046875, 360.0, 653.4124755859375)
@@ -253,7 +253,7 @@ Text: Größe des Batteriespeichers
 Position: (360.0, 640.2479248046875, 500.0, 653.4124755859375)
 Schriftart: Helvetica-Regular
 Schriftgröße: 9.985486030578613
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
 Text: Zellentechnologie:
 Position: (238.6392822265625, 656.0, 330.0, 669.0)
@@ -265,7 +265,7 @@ Text: Speicherzellentechnologie
 Position: (360.0, 656.0, 500.0, 669.0)
 Schriftart: Helvetica-Regular
 Schriftgröße: 9.985486030578613
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
 Text: Erweiterungsmodul:
 Position: (238.6392822265625, 671.6986694335938, 360.0, 684.8632202148438)
@@ -277,7 +277,7 @@ Text: Erweiterungsmodul Größe
 Position: (360.0, 671.7, 500.0, 684.9)
 Schriftart: Helvetica-Regular
 Schriftgröße: 9.985486030578613
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
 Text: max. Speichergröße:
 Position: (238.6392822265625, 687.4240112304688, 360.0, 700.5885620117188)
@@ -289,7 +289,7 @@ Text: Speichergröße maximum
 Position: (360.0, 687.4, 500.0, 700.6)
 Schriftart: Helvetica-Regular
 Schriftgröße: 9.985486030578613
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
 Text: Outdoorfähig:
 Position: (238.6392822265625, 703.1493530273438, 322.3141784667969, 716.3139038085938)
@@ -301,7 +301,7 @@ Text: Outdoorfähig
 Position: (360.0, 703.1493530273438, 500.0, 716.3139038085938)
 Schriftart: Helvetica-Regular
 Schriftgröße: 9.985486030578613
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
 Text: Garantie:
 Position: (238.6392822265625, 718.8746948242188, 322.3141784667969, 732.0392456054688)
@@ -309,11 +309,11 @@ Schriftart: Helvetica-Bold
 Schriftgröße: 9.985486030578613
 Farbe: 3487029
 ----------------------------------------
-Text: Speicher-Garantie-Text
+Text: siehe Produktdatenblatt anbei
 Position: (360.0, 718.8746948242188, 500.0, 732.0392456054688)
 Schriftart: Helvetica-Regular
 Schriftgröße: 9.985486030578613
-Farbe: 3487029
+Farbe: 866432
 ----------------------------------------
 Text: SOLARMODULE
 Position: (74.656005859375, 194.76463317871094, 175.08436584472656, 213.19305419921875)

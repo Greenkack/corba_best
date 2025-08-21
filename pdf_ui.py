@@ -932,20 +932,29 @@ def render_pdf_ui(
                     st.warning(f" Unvollständige Daten erkannt: {', '.join(validation_result['missing_data_summary'])}")
                     st.info("Ein vereinfachtes Informations-PDF wird erstellt.")
                     
-                    if validation_result['critical_errors'] > 0:
-                        st.error(f" {validation_result['critical_errors']} kritische Fehler gefunden. Erstelle Fallback-PDF...")
-                        
-                        # Erstelle Fallback-PDF
-                        pdf_bytes = create_fallback_pdf(
-                            issues=validation_result['missing_data'],
-                            warnings=validation_result['warnings'],
-                            texts=texts
+                    # Kritische Fehler: Liste auswerten
+                    critical_errors_list = validation_result.get('critical_errors', []) or []
+                    if len(critical_errors_list) > 0:
+                        st.error(f" {len(critical_errors_list)} kritische Fehler gefunden. Erstelle Fallback-PDF...")
+                        # Details anzeigen
+                        with st.expander("Details zu kritischen Fehlern"):
+                            for err in critical_errors_list:
+                                st.error(f"- {err}")
+                        # Erstelle Fallback-PDF (vereinfachtes Info-PDF)
+                        pdf_bytes = _create_no_data_fallback_pdf(
+                            texts=texts,
+                            customer_data=project_data.get('customer_data', {})
                         )
                         st.session_state.generated_pdf_bytes_for_download_v1 = pdf_bytes
                         st.success(" Fallback-PDF erfolgreich erstellt!")
                         return
                     else:
-                        st.info(f"ℹ {validation_result['warnings']} Warnungen. PDF wird mit verfügbaren Daten erstellt.")
+                        warnings_list = validation_result.get('warnings', []) or []
+                        st.info(f"ℹ {len(warnings_list)} Warnungen. PDF wird mit verfügbaren Daten erstellt.")
+                        if warnings_list:
+                            with st.expander("Warnungsdetails anzeigen"):
+                                for w in warnings_list:
+                                    st.warning(f"- {w}")
                 else:
                     st.success(" Alle Daten vollständig verfügbar.")
                     

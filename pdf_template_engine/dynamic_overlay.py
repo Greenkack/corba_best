@@ -293,6 +293,12 @@ def generate_overlay(coords_dir: Path, dynamic_data: Dict[str, str], total_pages
         # Zusätzliche Diagramme auf Seite 1
         if i == 1:
             _draw_page1_kpi_donuts(c, dynamic_data, page_width, page_height)
+        # Seite 3: zweites (rechtes) 20-Jahre-Diagramm zeichnen und Trennlinie
+        if i == 3:
+            try:
+                _draw_page3_right_chart_and_separator(c, elements, dynamic_data, page_width, page_height)
+            except Exception:
+                pass
     # Produktbilder auf Seite 4 (optional aus Produkt-DB)
         if i == 4:
             _draw_page4_component_images(c, dynamic_data, page_width, page_height)
@@ -309,7 +315,9 @@ def generate_overlay(coords_dir: Path, dynamic_data: Dict[str, str], total_pages
         for elem in elements:
             text = elem.get("text", "")
             key = PLACEHOLDER_MAPPING.get(text)
-            draw_text = dynamic_data.get(key, text) if key else text
+            # Wenn ein Platzhalter-Key existiert, aber kein dynamischer Wert gesetzt ist,
+            # nichts zeichnen (statt den YAML-Beispieltext wie "PV-Zellentechnologie1").
+            draw_text = (dynamic_data.get(key, "") if key else text)
             pos = elem.get("position", (0, 0, 0, 0))
             if len(pos) == 4:
                 x0, y0, x1, y1 = pos
@@ -326,6 +334,24 @@ def generate_overlay(coords_dir: Path, dynamic_data: Dict[str, str], total_pages
                 c.setFont("Helvetica", font_size)
             color_int = int(elem.get("color", 0))
             c.setFillColor(int_to_color(color_int))
+            
+            # Seite 3: Dünnen Strich zwischen Batterieladung und Batterieüberschuss zeichnen
+            if i == 3 and key == "battery_usage_savings_eur":
+                # Position nach dem ersten Wert, zeichne dünne Linie
+                c.saveState()
+                c.setStrokeColor(Color(0.7, 0.7, 0.7))  # Grauer Strich
+                c.setLineWidth(0.5)
+                separator_y = draw_y - 15  # 15 Punkte unter dem ersten Wert
+                c.line(x0, separator_y, x1, separator_y)
+                c.restoreState()
+            
+            # Seite 3: EUR unter den beiden Balkenzahlen ausblenden (die Achsen-EUR links bleibt)
+            if i == 3:
+                try:
+                    if (text or "").strip() == "EUR" and len(pos) == 4 and pos[0] >= 100.0:
+                        continue
+                except Exception:
+                    pass
             # Auf Seite 1 die großen KPI-%-Texte (54%, 42%) nicht zusätzlich zeichnen,
             # da diese jetzt im Donut-Zentrum erscheinen sollen.
             if i == 1 and key in {"self_supply_rate_percent", "self_consumption_percent"}:
@@ -363,6 +389,189 @@ def generate_overlay(coords_dir: Path, dynamic_data: Dict[str, str], total_pages
         c.showPage()
     c.save()
     return buffer.getvalue()
+
+
+def _draw_page3_right_chart_and_separator(c: canvas.Canvas, elements: List[Dict[str, Any]], dynamic_data: Dict[str, str], page_width: float, page_height: float) -> None:
+    """Seite 3: Rechts NUR die 20-Jahres-Gesamtergebnisse als Text + vertikale Trennlinie.
+
+    - Linke Diagrammhöhe (aus Tick-Positionen) wird genutzt, um die Text-Vertikalmitte zu bestimmen.
+    - Ausgegeben werden: cost_20y_no_increase_number, cost_20y_with_increase_number
+    - Trennlinie: fest platziert (template-stabil) rechts neben dem linken Diagramm.
+    """
+    # 1) Linke Diagramm-Vertikalrange aus den Tick-Elementen entnehmen
+    top_label_y1 = None
+    bottom_label_y1 = None
+    for el in elements:
+        t = (el.get("text") or "").strip()
+        if t == "25.000" and isinstance(el.get("position"), tuple) and len(el.get("position")) == 4:
+            top_label_y1 = el["position"][3]
+        if t == "0" and isinstance(el.get("position"), tuple) and len(el.get("position")) == 4:
+            bottom_label_y1 = el["position"][3]
+    # Fallbacks, falls tokens bereits dynamisch ersetzt wurden und oben nicht gefunden wurden
+    if top_label_y1 is None or bottom_label_y1 is None:
+        # Suche nach kleinster/größter y1 bei numerischen Tick-Labels im Bereich der linken Achse
+        candidates = []
+        for el in elements:
+            t = (el.get("text") or "").strip().replace(".", "").replace(",", ".")
+            if re.fullmatch(r"[0-9]+(\.[0-9]+)?", t):
+                pos = el.get("position")
+                if isinstance(pos, tuple) and len(pos) == 4 and pos[0] < 100.0:
+                    candidates.append(pos[3])
+        if candidates:
+            top_label_y1 = min(candidates)
+            bottom_label_y1 = max(candidates)
+    # Umrechnen in Canvas-Koordinaten
+    if top_label_y1 is None or bottom_label_y1 is None:
+        # Plausible Defaults aus der Vorlage (aus seite3.yml abgelesen)
+        top_label_y1 = 192.7
+        bottom_label_y1 = 326.1
+    axis_top_y = page_height - float(top_label_y1)
+    axis_bottom_y = page_height - float(bottom_label_y1)
+    axis_height = max(10.0, axis_top_y - axis_bottom_y)
+
+    # 2) Separator-Linie fest rechts vom linken Diagramm platzieren (template-stabil)
+    # Fixe Position hat sich bewährt: ~300 pt liegt rechts neben dem linken Diagramm und lässt genug Platz rechts
+    sep_x = 299.0
+    c.saveState()
+    c.setStrokeColor(int_to_color(0x1B3670))
+    c.setLineWidth(0.6)
+    # Linie über die Diagrammhöhe ziehen (mit kleiner Überlappung)
+    c.line(sep_x, axis_bottom_y - 8.0, sep_x, axis_top_y + 8.0)
+    c.restoreState()
+
+    # 3) Rechte Diagrammfläche definieren – nur ZWEI Balken (Totals 20J)
+    chart_left_x = sep_x + 42.0  # weiter nach rechts verschoben
+    chart_width = 230.0
+    chart_right_x = chart_left_x + chart_width
+    y0 = axis_bottom_y
+    y1 = axis_top_y
+    from reportlab.lib.colors import Color
+    axis_color = int_to_color(0xB0B0B0)  # Achse in Hellgrau
+    dark_blue = Color(0.07, 0.34, 0.60)
+    light_blue = Color(0.63, 0.78, 0.90)
+
+    # Totals aus Platzhaltern holen
+    def _parse_money(s: str) -> float:
+        try:
+            ss = re.sub(r"[^0-9,\.]", "", (s or "")).replace(".", "").replace(",", ".")
+            return float(ss or 0.0)
+        except Exception:
+            return 0.0
+
+    v_no_inc_total = _parse_money(dynamic_data.get("cost_20y_no_increase_number") or "0")
+    v_with_inc_total = _parse_money(dynamic_data.get("cost_20y_with_increase_number") or "0")
+
+    # Dynamische Obergrenze bestimmen
+    import math
+    max_val = max(v_no_inc_total, v_with_inc_total, 0.0)
+    if max_val > 0:
+        top = math.ceil(max_val / 1000.0) * 1000.0
+        if top <= max_val:
+            top = max(max_val + 0.02 * max_val, top + 1000.0)
+        cap = max_val * 1.2
+        if top > cap:
+            top = cap
+    else:
+        top = 25000.0
+
+    # Y-Achse und Ticks + gepunktete Gridlines
+    y_axis_x = chart_left_x + 8.0
+    c.saveState()
+    c.setStrokeColor(axis_color)
+    c.setLineWidth(1.0)
+    c.line(y_axis_x, y0, y_axis_x, y1)
+    try:
+        c.setFont("Helvetica", 6.0)
+    except Exception:
+        c.setFont("Helvetica", 6)
+    for i_tick in range(5, -1, -1):
+        tv = top * i_tick / 5.0
+        py = y0 + (y1 - y0) * (tv / top if top > 0 else 0.0)
+        c.setLineWidth(0.6)
+        # Tick an der Y-Achse
+        c.line(y_axis_x - 3.0, py, y_axis_x, py)
+        # Gepunktete horizontale Linie
+        c.saveState()
+        c.setDash(1, 3)
+        c.setStrokeColor(int_to_color(0xC9D4E5))
+        c.line(y_axis_x, py, chart_right_x, py)
+        c.restoreState()
+        lbl = f"{tv:,.2f}".replace(",", "#").replace(".", ",").replace("#", ".")
+        try:
+            tw = c.stringWidth(lbl, "Helvetica", 6.0)
+        except Exception:
+            tw = c.stringWidth(lbl, "Helvetica", 6)
+        c.setFillColor(Color(0, 0, 0))
+        c.drawString(y_axis_x - 6.0 - tw, py - 2.0, lbl)
+    c.restoreState()
+
+    # Balken zeichnen
+    def _h(val: float) -> float:
+        return 0.0 if top <= 0 else (max(0.0, min(1.0, val / top)) * (y1 - y0))
+    bar_w = 16.0  # halb so breit
+    gap = 40.0
+    # Balken leicht nach rechts verschieben
+    bar_shift = 14.0  # etwas weiter rechts als zuvor
+    bar1_x = y_axis_x + 22.0 + bar_shift
+    # Zweiter Balken so verschieben, dass der Abstand doppelt so groß ist wie vorher
+    bar2_x = bar1_x + bar_w + (2 * gap)
+    h1 = _h(v_no_inc_total)
+    h2 = _h(v_with_inc_total)
+    c.saveState()
+    c.setFillColor(light_blue)
+    c.rect(bar1_x, y0, bar_w, h1, stroke=0, fill=1)
+    c.setFillColor(dark_blue)
+    c.rect(bar2_x, y0, bar_w, h2, stroke=0, fill=1)
+    c.restoreState()
+
+    # Bodenlinie des Diagramms in Grau (keine obere Linie)
+    c.saveState()
+    c.setStrokeColor(int_to_color(0xB0B0B0))
+    c.setLineWidth(1.0)
+    c.line(y_axis_x, y0, chart_right_x, y0)
+    c.restoreState()
+
+    # Werte über den Balken anzeigen (als Orientierung)
+    try:
+        c.setFont("Helvetica-Bold", 10.49)
+    except Exception:
+        c.setFont("Helvetica-Bold", 10.49)
+    c.setFillColor(Color(0, 0, 0))
+    val1 = dynamic_data.get("cost_20y_no_increase_number") or "0,00 €"
+    val2 = dynamic_data.get("cost_20y_with_increase_number") or "0,00 €"
+    c.drawCentredString(bar1_x + bar_w / 2.0, y0 + h1 + 12.0, val1)
+    c.drawCentredString(bar2_x + bar_w / 2.0, y0 + h2 + 12.0, val2)
+
+    # Legende auf gleiche Höhe wie linke Diagramm-Legende (absolute Y-Positionen)
+    legend_x = chart_left_x + 12.0  # Legende etwas nach rechts
+    square_size = 6.0
+    label_gap = 4.0
+    line_gap = 12.0
+    try:
+        c.setFont("Helvetica", 7.98)
+    except Exception:
+        c.setFont("Helvetica", 8)
+    # Eintrag 1 (oben): Ohne Strompreiserhöhung (hellblau)
+    # Zielhöhe (linkes Diagramm): 346.0815734863 356.6169128418 -> wir orientieren uns am unteren Wert für die Text-Baseline
+    legend1_base_y = page_height - 356.6169128417969
+    c.saveState()
+    c.setFillColor(light_blue)
+    c.rect(legend_x, legend1_base_y, square_size, square_size, stroke=0, fill=1)
+    c.restoreState()
+    c.setFillColor(Color(0, 0, 0))
+    label1 = "Ohne Strompreiserhöhung"
+    c.drawString(legend_x + square_size + label_gap, legend1_base_y - 1.0, label1)
+    # Eintrag 2 (darunter): Mit Strompreiserhöhung (dunkelblau)
+    # Zielhöhe (linkes Diagramm): 358.0715026855 368.6068420410 -> unterer Wert als Baseline
+    legend2_base_y = page_height - 368.6068420410156
+    legend2_x = legend_x
+    c.saveState()
+    c.setFillColor(dark_blue)
+    c.rect(legend2_x, legend2_base_y, square_size, square_size, stroke=0, fill=1)
+    c.restoreState()
+    label2 = "Mit Strompreiserhöhung"
+    c.setFillColor(Color(0, 0, 0))
+    c.drawString(legend2_x + square_size + label_gap, legend2_base_y - 1.0, label2)
 
 
 def _draw_page4_component_images(c: canvas.Canvas, dynamic_data: Dict[str, str], page_width: float, page_height: float) -> None:
@@ -589,3 +798,15 @@ def generate_custom_offer_pdf(
     overlay = generate_overlay(coords_dir, dynamic_data, total_pages=total_pages)
     fused = merge_with_background(overlay, bg_dir)
     return append_additional_pages(fused, additional_pdf)
+
+def add_page3_elements(c, dynamic_data):
+    """Fügt spezielle Elemente für Seite 3 hinzu"""
+    try:
+        # Dünne Trennlinie zwischen Batterienutzen und Batterie-Überschuss
+        c.setStrokeColor(colors.black)
+        c.setLineWidth(0.5)
+        # Y-Position zwischen den beiden Batteriewerten (anpassen nach Bedarf)
+        c.line(300, 250, 500, 250)  # x1, y1, x2, y2
+        
+    except Exception as e:
+        print(f"Fehler beim Hinzufügen der Seite 3 Elemente: {e}")

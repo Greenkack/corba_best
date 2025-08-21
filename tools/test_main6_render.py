@@ -21,13 +21,11 @@ project_data = {
         'zip_code': '12345',
         'city': 'Musterstadt',
         'phone_mobile': '+491234567',
-        'email': 'max@example.com'
+        'email': 'max@example.com',
     },
     'project_details': {
-        # Trigger headings and dynamic title values
         'module_quantity': 20,
         'selected_module_capacity_w': 420,
-        # Provide explicit module extended fields to verify mapping
         'module_manufacturer': 'JA Solar',
         'module_model': 'JAM54S31-420/MR',
         'module_cell_technology': 'Monokristallin N-Type',
@@ -35,22 +33,27 @@ project_data = {
         'module_cell_type': '108 Halbzellen',
         'module_version': 'Black Frame',
         'module_guarantee_combined': '25 Jahre Produktgarantie | 30 Jahre Leistungsgarantie',
-
-        # Inverter fields
         'selected_inverter_name': 'Huawei SUN2000-8KTL-M1',
         'selected_inverter_quantity': 1,
         'selected_inverter_power_kw': 8,
-
-        # Storage to trigger Huawei LUNA specifics
         'selected_storage_name': 'Huawei LUNA2000-7-S1-7kWh Stromspeicher',
         'include_storage': True,
-    }
+        # Seite 3: Stromkosten (Monat) und Preissteigerung
+        'stromkosten_haushalt_euro_monat': 150,
+        'stromkosten_heizung_euro_monat': 50,
+        'electricity_price_increase_annual_percent': 5,
+    },
 }
+
 analysis_results = {
     'annual_pv_production_kwh': 8251.92,
     'self_supply_rate_percent': 54,
     'self_consumption_percent': 42,
+    # Für Validierung/KPIs
+    'total_investment_netto': 19999.99,
+    'final_price': 19999.99,
 }
+
 company_info = {
     'name': 'Muster Solar GmbH',
     'street': 'Hauptstraße 1',
@@ -61,8 +64,12 @@ company_info = {
     'website': 'https://mustersolar.de',
 }
 
-out = pg.generate_main_template_pdf_bytes(project_data, analysis_results, company_info)
 
+# Für Validierung: Firmendaten in project_data injizieren
+project_data['company_information'] = company_info
+
+# Render 6-Seiten-Hauptausgabe
+out = pg.generate_main_template_pdf_bytes(project_data, analysis_results, company_info)
 out_path = Path('test_main6.pdf')
 if out:
     out_path.write_bytes(out)

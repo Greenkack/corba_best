@@ -147,8 +147,12 @@ def _show_pdf_data_status(project_data: Dict[str, Any], analysis_results: Dict[s
         st.error(" " + get_text_pdf_ui(texts, "pdf_creation_blocked", f"PDF-Erstellung nicht möglich. {critical_summary}"))
         st.info(get_text_pdf_ui(texts, "pdf_creation_instructions", "Bitte führen Sie eine Wirtschaftlichkeitsberechnung durch, bevor Sie ein PDF erstellen."))
     elif validation_result.get('warnings'):
+        warn_list = validation_result.get('warnings', []) or []
         st.warning(" " + get_text_pdf_ui(texts, "pdf_creation_warnings", "PDF kann erstellt werden, enthält aber möglicherweise nicht alle gewünschten Informationen."))
-        st.info(get_text_pdf_ui(texts, "pdf_creation_with_warnings", "Bei unvollständigen Daten wird ein vereinfachtes PDF mit den verfügbaren Informationen erstellt."))
+        st.info(get_text_pdf_ui(texts, "pdf_creation_with_warnings", f"Bei unvollständigen Daten wird ein vereinfachtes PDF mit den verfügbaren Informationen erstellt. ({len(warn_list)} Warnungen)"))
+        with st.expander("Warnungsdetails anzeigen"):
+            for w in warn_list:
+                st.warning(f"- {w}")
     else:
         st.success(" " + get_text_pdf_ui(texts, "pdf_data_complete", "Alle erforderlichen Daten verfügbar - vollständiges PDF kann erstellt werden!"))
     

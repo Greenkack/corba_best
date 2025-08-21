@@ -114,12 +114,30 @@ PLACEHOLDER_MAPPING.update({
 	# die Stromkosten-Projektion über 10 Jahre: links OHNE Erhöhung, rechts MIT Erhöhung.
 	"36.958": "cost_10y_with_increase_number",
 	"29.150": "cost_10y_no_increase_number",
-	# IRR / Rendite (Platzhalter – bis dedizierte Szenarienwerte mit/ohne Speicher vorliegen)
-	"12,7%": "irr_percent",
-	"9,7%": "irr_percent",
+	# RENDITE: Prozentwerte werden durch dynamische Euro-Beträge ersetzt
+	"12,7%": "self_consumption_without_battery_eur",
+	"9,7%": "direct_grid_feed_in_eur",
+	# Batteriespeicher-Werte: 123% und 321% durch dynamische Euro-Beträge ersetzen
+	"123%": "battery_usage_savings_eur",
+	"321%": "battery_surplus_feed_in_eur",
+	# Neue Platzhalter für die 4 Berechnungen im "Mit Batteriespeichersystem" Bereich
+	# Diese werden unter der Hauptüberschrift angezeigt
+	"Mit Batteriespeichersystem Text Line 1": "battery_direct_consumption_line",
+	"Mit Batteriespeichersystem Text Line 2": "battery_storage_usage_line", 
+	"Mit Batteriespeichersystem Text Line 3": "battery_surplus_feed_in_line",
+	"Mit Batteriespeichersystem Text Line 4": "total_savings_with_battery_line",
 	# Produktionskosten (ct/kWh) – basierend auf LCOE
 	"8,9 Cent": "lcoe_cent_per_kwh",
 	"13,5 Cent": "lcoe_cent_per_kwh",
+})
+
+# Seite 3: RENDITE – Erklärblock ersetzen durch dynamische Zeilen
+PLACEHOLDER_MAPPING.update({
+	" Der interne Zinsfuß entspricht der mittleren, jährlichen": "rendite_line_1",
+	"Rendite Ihres Kapitals über die gesamte Laufzeit.": "rendite_line_2",
+	# Zusätzliche Platzhalter für die Beschriftungen/Labels
+	"Ohne Batteriespeichersystem": "without_battery_label",
+	"Mit Batteriespeichersystem": "with_battery_label",
 })
 
 # Seite 3: Y-Achsen-Beschriftung des Diagramms (dynamisch skalieren)
@@ -193,13 +211,48 @@ PLACEHOLDER_MAPPING.update({
 	"Solarzellen1": "module_cell_type",
 	"Version1": "module_version",
 	"Modul-Garantie1": "module_guarantee_combined",
+	# In der Vorlage steht neben "Garantie:" beim Modul oft der Text "siehe Produktdatenblatt" –
+	# mappe diesen explizit auf den kombinierten Garantietext, damit echte Werte aus der DB erscheinen.
+	"siehe Produktdatenblatt": "module_guarantee_combined",
 })
 
 
+def fmt_number(value: Any, decimal_places: int = 2, suffix: str = "", force_german: bool = True) -> str:
+    """Formatiert Zahlen im deutschen Format mit Punkt als Tausendertrennzeichen und Komma als Dezimaltrennzeichen."""
+    try:
+        if value is None or value == "":
+            return "0,00" + (" " + suffix if suffix else "")
+        
+        # String bereinigen falls nötig
+        if isinstance(value, str):
+            # Entferne Einheiten und unerwünschte Zeichen
+            clean_val = re.sub(r'[^\d,.-]', '', value)
+            clean_val = clean_val.replace(',', '.')
+        else:
+            clean_val = str(value)
+        
+        num = float(clean_val)
+        
+        if force_german:
+            # Deutsche Formatierung: Tausendertrennzeichen = Punkt, Dezimaltrennzeichen = Komma
+            if decimal_places == 0:
+                formatted = f"{num:,.0f}".replace(',', '#').replace('.', ',').replace('#', '.')
+            else:
+                formatted = f"{num:,.{decimal_places}f}".replace(',', '#').replace('.', ',').replace('#', '.')
+        else:
+            # Fallback: Standard-Formatierung
+            formatted = f"{num:.{decimal_places}f}"
+        
+        return formatted + (" " + suffix if suffix else "")
+    
+    except (ValueError, TypeError):
+        return "0" + (",00" if decimal_places > 0 else "") + (" " + suffix if suffix else "")
+
+
 def build_dynamic_data(
-	project_data: Dict[str, Any] | None,
-	analysis_results: Dict[str, Any] | None,
-	company_info: Dict[str, Any] | None = None,
+    project_data: Dict[str, Any] | None,
+    analysis_results: Dict[str, Any] | None,
+    company_info: Dict[str, Any] | None = None,
 ) -> Dict[str, str]:
 	"""Erzeugt ein Dictionary mit dynamischen Werten für die Overlays.
 
@@ -209,7 +262,6 @@ def build_dynamic_data(
 		company_info: optionale Firmendaten (für spätere Felder/Logos).
 
 	Returns:
-		Mapping von Platzhalter-Keys (siehe PLACEHOLDER_MAPPING Werte) zu Strings.
 	"""
 	project_data = project_data or {}
 	analysis_results = analysis_results or {}
@@ -294,11 +346,11 @@ def build_dynamic_data(
 		"module_manufacturer": "",
 		"module_model": "",
 		"module_power_wp": "",
-		"module_warranty_years": "",
+		"module_warranty_years": "siehe Produktdatenblatt",
 		"module_performance_warranty": "",
 		"inverter_manufacturer": "",
 		"inverter_max_efficiency_percent": "",
-		"inverter_warranty_years": "",
+		"inverter_warranty_years": "siehe Produktdatenblatt",
 		# Neue WR-Felder (Seite 4 erweitert)
 		"inverter_model": "",
 		"inverter_power_watt": "",
@@ -321,7 +373,7 @@ def build_dynamic_data(
 		"storage_max_size_kwh": "",
 		"storage_backup_text": "",
 		"storage_outdoor_capability": "",
-		"storage_warranty_text": "",
+		"storage_warranty_text": "siehe Produktdatenblatt",
 			# Bilder für Seite 4 (aus Produkt-DB, Base64 – werden separat gezeichnet)
 			"module_image_b64": "",
 			"inverter_image_b64": "",
@@ -764,16 +816,16 @@ def build_dynamic_data(
 		cost20_with_inc = 0.0
 		for year in range(20):
 			cost20_with_inc += base * ((1.0 + inc_rate) ** year)
-		# Werte in die Felder (ohne Einheit, "EUR" steht separat im Template)
+		# Werte in die Felder mit 2 Dezimalstellen und Euro-Suffix
 		if cost10_no_inc > 0:
-			result["cost_10y_no_increase_number"] = fmt_number(cost10_no_inc, 0, "").replace(" €", "")
+			result["cost_10y_no_increase_number"] = fmt_number(cost10_no_inc, 2, "€")
 		if cost10_with_inc > 0:
-			result["cost_10y_with_increase_number"] = fmt_number(cost10_with_inc, 0, "").replace(" €", "")
-		# 20-Jahre Felder bereitstellen (derzeit nicht ins Template gemappt)
+			result["cost_10y_with_increase_number"] = fmt_number(cost10_with_inc, 2, "€")
+		# 20-Jahre Felder bereitstellen (derzeit nicht ins Template gemappt) – gleich formatiert
 		if cost20_no_inc > 0:
-			result["cost_20y_no_increase_number"] = fmt_number(cost20_no_inc, 0, "").replace(" €", "")
+			result["cost_20y_no_increase_number"] = fmt_number(cost20_no_inc, 2, "€")
 		if cost20_with_inc > 0:
-			result["cost_20y_with_increase_number"] = fmt_number(cost20_with_inc, 0, "").replace(" €", "")
+			result["cost_20y_with_increase_number"] = fmt_number(cost20_with_inc, 2, "€")
 		# Dynamische Y-Achse (6 Ticks: Top .. 0) basierend auf Max-Wert
 		max_val = max(cost10_no_inc, cost10_with_inc)
 		if max_val <= 0:
@@ -811,6 +863,111 @@ def build_dynamic_data(
 	except Exception:
 		pass
 
+	# Seite 3 – KORRIGIERTE Berechnungen für RENDITE-Bereich
+	try:
+		# 1. Stromtarif des Kunden berechnen (€/kWh)
+		price_eur_per_kwh = 0.0
+		
+		# Aus monatlichen Kosten berechnen
+		monthly_household = parse_float(project_data.get("stromkosten_haushalt_euro_monat")) or 0.0
+		monthly_heating = parse_float(project_data.get("stromkosten_heizung_euro_monat")) or 0.0
+		annual_cost_total = (monthly_household + monthly_heating) * 12.0
+		
+		# Jahresverbrauch
+		annual_consumption = parse_float(project_data.get("annual_consumption_kwh")) or 3000.0
+		
+		# Stromtarif berechnen: Jahreskosten / Jahresverbrauch
+		if annual_consumption > 0 and annual_cost_total > 0:
+			price_eur_per_kwh = annual_cost_total / annual_consumption
+		else:
+			price_eur_per_kwh = 0.37  # Fallback
+		
+		# 2. Werte aus Seite 2 der PDF holen
+		# Direkter Eigenverbrauch (oberes Diagramm)
+		direct_consumption_kwh = parse_float(analysis_results.get("direct_self_consumption_kwh")) or 2236.0
+		
+		# Netzeinspeisung
+		grid_feedin_kwh = parse_float(analysis_results.get("grid_feed_in_kwh")) or 3214.0
+		
+		# Batteriespeicherung (oberes Diagramm Seite 2)
+		battery_charge_kwh = parse_float(analysis_results.get("battery_charge_kwh")) or 3627.0
+		
+		# Batterieentladung für Eigenverbrauch (unteres Diagramm Seite 2)
+		battery_discharge_kwh = parse_float(analysis_results.get("battery_discharge_for_sc_kwh")) or 1264.0
+		
+		# 3. Einspeisevergütung ermitteln
+		eeg_eur_per_kwh = 0.0786  # 7,86 ct für <10kWp Teileinspeisung (Fallback)
+		
+		try:
+			# Anlagengröße
+			anlage_kwp = parse_float(analysis_results.get("anlage_kwp")) or 9.1
+			
+			# EEG-Tarife aus Admin-Settings
+			from database import load_admin_setting
+			fit = load_admin_setting("feed_in_tariffs", {})
+			mode = project_data.get("einspeise_art", "parts")  # parts oder full
+			
+			tariffs = fit.get(mode, [])
+			for tariff in tariffs:
+				kwp_min = tariff.get("kwp_min", 0)
+				kwp_max = tariff.get("kwp_max", 999)
+				if kwp_min <= anlage_kwp <= kwp_max:
+					eeg_eur_per_kwh = tariff.get("ct_per_kwh", 7.86) / 100.0
+					break
+		except:
+			pass
+		
+		# 4. BERECHNUNGEN nach Ihrer Spezifikation:
+		
+		# Berechnung 1: Einsparung durch Eigenverbrauch
+		# 2.236 kWh × 0,40 €/kWh = 894,40 €
+		savings_direct_consumption = direct_consumption_kwh * price_eur_per_kwh
+		
+		# Berechnung 2: Einnahmen aus Einspeisevergütung  
+		# 3.214 kWh × 7,86 ct = 252,62 €
+		revenue_grid_feedin = grid_feedin_kwh * eeg_eur_per_kwh
+		
+		# Berechnung 3: Einsparung durch Batterieladung
+		# 1.264 kWh × 0,40 €/kWh = 505,60 €
+		savings_battery_usage = battery_discharge_kwh * price_eur_per_kwh
+		
+		# Berechnung 4: Einsparung aus Batterieüberschuss
+		# (3.627 - 1.264) kWh × 7,86 ct = 1.363 kWh × 7,86 ct = 136,44 €
+		battery_surplus_kwh = max(0, battery_charge_kwh - battery_discharge_kwh)
+		savings_battery_surplus = battery_surplus_kwh * eeg_eur_per_kwh
+		
+		# Gesamteinsparungen
+		total_savings = savings_direct_consumption + revenue_grid_feedin + savings_battery_usage + savings_battery_surplus
+		
+		# Debug-Ausgabe
+		print(f"DEBUG Seite 3 Berechnungen (KORRIGIERT):")
+		print(f"  Stromtarif Kunde: {price_eur_per_kwh:.4f} €/kWh")
+		print(f"  Direktverbrauch: {direct_consumption_kwh} kWh")
+		print(f"  Netzeinspeisung: {grid_feedin_kwh} kWh")
+		print(f"  Batterieladung: {battery_charge_kwh} kWh")
+		print(f"  Batterieentladung: {battery_discharge_kwh} kWh")
+		print(f"  Batterieüberschuss: {battery_surplus_kwh} kWh")
+		print(f"  EEG-Tarif: {eeg_eur_per_kwh:.4f} €/kWh")
+		print(f"  1. Eigenverbrauch: {savings_direct_consumption:.2f} €")
+		print(f"  2. Netzeinspeisung: {revenue_grid_feedin:.2f} €")
+		print(f"  3. Batterienutzen: {savings_battery_usage:.2f} €")
+		print(f"  4. Batterie-Überschuss: {savings_battery_surplus:.2f} €")
+		print(f"  GESAMT: {total_savings:.2f} €")
+		
+		# Platzhalter für PDF befüllen
+		result["self_consumption_without_battery_eur"] = fmt_number(savings_direct_consumption, 2, "€")
+		result["direct_grid_feed_in_eur"] = fmt_number(revenue_grid_feedin, 2, "€")  
+		result["battery_usage_savings_eur"] = fmt_number(savings_battery_usage, 2, "€")
+		result["battery_surplus_feed_in_eur"] = fmt_number(savings_battery_surplus, 2, "€")
+		
+		# Gesamtsumme für "Einsparungen pro Jahr (gesamt)"
+		result["total_annual_savings_eur"] = fmt_number(total_savings, 2, "€")
+		
+	except Exception as e:
+		print(f"ERROR in Seite 3 calculations: {e}")
+		import traceback
+		traceback.print_exc()
+
 	# Seite 4: Produktdetails für Modul / WR / Speicher
 	# Wir versuchen, Produktdetails aus der lokalen DB zu laden (optional), basierend auf den ausgewählten Modellnamen.
 	get_product_by_model_name = None
@@ -819,6 +976,24 @@ def build_dynamic_data(
 		get_product_by_model_name = _get_prod  # type: ignore
 	except Exception:
 		get_product_by_model_name = None
+
+	# Kleine Normalisierungshilfen (für Fuzzy-Matching und Schlüsselvergleiche)
+	def _norm_key(s: Any) -> str:
+		try:
+			st = str(s).strip().lower()
+			# vereinheitliche Leer-/Sonderzeichen
+			st = re.sub(r"\s+", " ", st)
+			return st
+		except Exception:
+			return ""
+
+	def _norm_flat(s: Any) -> str:
+		try:
+			st = str(s).strip().lower()
+			# entferne alles außer a-z0-9
+			return re.sub(r"[^a-z0-9]", "", st)
+		except Exception:
+			return ""
 
 	def fetch_details(model_name: str) -> Dict[str, Any]:
 		if not model_name or not isinstance(model_name, str):
@@ -852,6 +1027,58 @@ def build_dynamic_data(
 		alt_model = as_str(project_details.get("module_model") or "").strip()
 		if alt_model:
 			module_details = fetch_details(alt_model) or {}
+
+	# Falls weiterhin keine Details/ID gefunden: Fuzzy-Matching über Produktliste (Kategorie Modul)
+	if not module_details and (module_name or project_details.get("module_model")):
+		try:
+			from product_db import list_products as _list_products, get_product_by_id as _get_prod_by_id
+		except Exception:
+			_list_products = None  # type: ignore
+			_get_prod_by_id = None  # type: ignore
+		if _list_products and _get_prod_by_id:
+			try:
+				cands = []
+				if module_name:
+					cands.append(str(module_name))
+				mm_pd = as_str(project_details.get("module_model") or "").strip()
+				if mm_pd:
+					cands.append(mm_pd)
+				# ggf. vorhandene DB-Infos
+				if module_details.get("model_name"):
+					cands.append(as_str(module_details.get("model_name")))
+				if module_details.get("brand") and module_details.get("model_name"):
+					cands.append(f"{module_details.get('brand')} {module_details.get('model_name')}")
+				cands_norm = {_norm_flat(c): c for c in cands if c}
+				prods = _list_products(category="Modul") or _list_products() or []
+				best_id = None
+				for p in prods:
+					mn = as_str(p.get("model_name") or "")
+					br = as_str(p.get("brand") or "")
+					alts = [mn, f"{br} {mn}".strip()]
+					alts_norm = [_norm_flat(x) for x in alts if x]
+					if any(an in cands_norm for an in alts_norm):
+						best_id = int(p.get("id"))
+						break
+				# wenn nichts exakt passt: enthalte/substring-Test
+				if not best_id and prods and cands_norm:
+					cand_keys = list(cands_norm.keys())
+					for p in prods:
+						mn = as_str(p.get("model_name") or "")
+						br = as_str(p.get("brand") or "")
+						alt = _norm_flat(f"{br} {mn}".strip())
+						if any(k and k in alt for k in cand_keys):
+							best_id = int(p.get("id"))
+							break
+				if best_id:
+					try:
+						md = _get_prod_by_id(int(best_id)) or {}
+						if md:
+							module_details = md
+							module_name = as_str(md.get("model_name") or module_name)
+					except Exception:
+						pass
+			except Exception:
+				pass
 	if module_details or module_name:
 		# Überschrift: "PHOTOVOLTAIK MODULE – <Anzahl> Stück"
 		try:
@@ -930,11 +1157,34 @@ def build_dynamic_data(
 			if val not in (None, ""):
 				result[out_key] = as_str(val)
 
-		# Optionaler Zusatz: falls obige Felder leer sind, nutze flexible Attribute-Tabelle mit exakten Keys
+		# Erweiterung: behutsame Synonym-Suche in den direkten DB-Feldern (ohne Fuzzy, nur gängige Aliase)
+		synonyms_map_db: Dict[str, list] = {
+			"module_cell_technology": [
+				"technology", "celltech", "pv_cell_technology", "zelltechnologie", "PV-Zellentechnologie", "PV Zellentechnologie",
+			],
+			"module_structure": [
+				"structure", "module_build", "aufbau", "modulaufbau", "Modulaufbau", "glas_typ", "glasstruktur",
+			],
+			"module_cell_type": [
+				"solar_cells", "cells", "solar_cell_type", "zelltyp", "Solarzellen", "cellcount", "cell_count",
+			],
+			"module_version": [
+				"module_version", "variant", "ausfuehrung", "modulversion", "Version", "version_label",
+			],
+		}
+		for out_k, alt_keys in synonyms_map_db.items():
+			if not result.get(out_k):
+				for ak in alt_keys:
+					v = module_details.get(ak)
+					if v not in (None, ""):
+						result[out_k] = as_str(v)
+						break
+
+		# Optionaler Zusatz: falls obige Felder leer sind, nutze flexible Attribute-Tabelle mit robustem Key-Matching
 		try:
 			if not all(result.get(k) for k in ("module_cell_technology", "module_structure", "module_cell_type", "module_version")):
 				from product_db import get_product_id_by_model_name as _get_pid
-				from product_attributes import get_attribute_value as _get_attr
+				from product_attributes import get_attribute_value as _get_attr, list_attributes as _list_attrs
 				from database import load_admin_setting as _load_admin_setting  # optional
 				pid = None
 				# Nutze bevorzugt die ausgewählte ID
@@ -947,47 +1197,92 @@ def build_dynamic_data(
 				if not pid:
 					if 'mod_model' in locals() and mod_model:
 						pid = _get_pid(mod_model)
-					elif module_name:
+					if not pid and module_name:
 						pid = _get_pid(module_name)
+					# Zusätzlich: explizites Projektfeld 'module_model' berücksichtigen
+					if not pid:
+						mm_pd = as_str(project_details.get("module_model") or "").strip()
+						if mm_pd:
+							pid = _get_pid(mm_pd)
+				# Wenn noch keine ID: versuche Fuzzy wie oben
+				if not pid and module_details.get("id"):
+					try:
+						pid = int(module_details.get("id"))
+					except Exception:
+						pid = None
 				if pid:
-					map_keys = {
+					# Admin-Alias-Map laden und reverse (kanonisch -> Aliasliste) normalisiert aufbauen
+					alias_map = None
+					try:
+						alias_map = _load_admin_setting("module_pdf_alias_map", {}) or {}
+					except Exception:
+						alias_map = None
+					rev: Dict[str, list] = {}
+					if alias_map:
+						for src_key, dst_key in alias_map.items():
+							if not src_key or not dst_key:
+								continue
+							can = _norm_key(dst_key)
+							rev.setdefault(can, []).append(str(src_key).strip())
+					# Alle Attribute einmalig listen für normalisierte Suche
+					attrs = []
+					try:
+						attrs = _list_attrs(int(pid)) or []
+					except Exception:
+						attrs = []
+					attrs_norm_map: Dict[str, Any] = {}
+					for a in attrs:
+						k = _norm_key(a.get("attribute_key"))
+						if k and k not in attrs_norm_map:
+							attrs_norm_map[k] = a.get("attribute_value")
+
+					def _resolve_attr(canonical: str, syns: list[str]) -> str:
+						# 1) exakt über get_attribute_value
+						val = _get_attr(int(pid), canonical)
+						if val not in (None, ""):
+							return str(val)
+						# 2) Synonyme direkt
+						for s in syns:
+							val2 = _get_attr(int(pid), s)
+							if val2 not in (None, ""):
+								return str(val2)
+						# 3) Admin-Aliase (reverse)
+						can_n = _norm_key(canonical)
+						for alias_key in rev.get(can_n, []) or []:
+							val3 = _get_attr(int(pid), alias_key)
+							if val3 not in (None, ""):
+								return str(val3)
+						# 4) Normalisierte Suche in allen Attributen
+						cand_keys = [_norm_key(canonical)] + [_norm_key(x) for x in syns]
+						# Admin-Aliase auch normalisiert ergänzen
+						for alias_key in rev.get(can_n, []) or []:
+							cand_keys.append(_norm_key(alias_key))
+						for ck in cand_keys:
+							if ck in attrs_norm_map and attrs_norm_map[ck] not in (None, ""):
+								return str(attrs_norm_map[ck])
+						return ""
+
+					# Synonyme je Ausgabefeld
+					synonyms_map_attr: Dict[str, list] = {
+						"module_cell_technology": ["technology", "pv_cell_technology", "zelltechnologie", "pv zellentechnologie", "pv-zellentechnologie"],
+						"module_structure": ["structure", "module_build", "aufbau", "modulaufbau", "modulaufbau"],
+						"module_cell_type": ["solar_cells", "cells", "solar_cell_type", "zelltyp", "solarzellen", "cellcount", "cell_count"],
+						"module_version": ["module_version", "variant", "ausfuehrung", "ausführung", "modulversion", "version", "version_label"],
+						"module_guarantee_combined": ["garantie", "garantietext", "module_warranty_text", "garantie_text", "warranty_text"],
+					}
+					canon_map = {
 						"module_cell_technology": "cell_technology",
 						"module_structure": "module_structure",
 						"module_cell_type": "cell_type",
 						"module_version": "version",
 						"module_guarantee_combined": "module_warranty_text",
 					}
-					for out_k, attr_k in map_keys.items():
-						if not result.get(out_k):
-							aval = _get_attr(pid, attr_k)
-							if aval not in (None, ""):
-								result[out_k] = as_str(aval)
-					# Wenn immer noch leer: Aliase aus Admin-Settings auflösen und entsprechende Attribute lesen
-					alias_map = None
-					try:
-						alias_map = _load_admin_setting("module_pdf_alias_map", {}) or {}
-					except Exception:
-						alias_map = None
-					if alias_map and pid:
-						# Baue Reverse-Index: canonical -> [alias_keys]
-						rev: Dict[str, list] = {}
-						for src_key, dst_key in alias_map.items():
-							if not src_key or not dst_key:
-								continue
-							rev.setdefault(str(dst_key).strip(), []).append(str(src_key).strip())
-						for out_k, can_k in {
-							"module_cell_technology": "cell_technology",
-							"module_structure": "module_structure",
-							"module_cell_type": "cell_type",
-							"module_version": "version",
-						}.items():
-							if result.get(out_k):
-								continue
-							for alias_key in rev.get(can_k, []) or []:
-								aval2 = _get_attr(pid, alias_key)
-								if aval2 not in (None, ""):
-									result[out_k] = as_str(aval2)
-									break
+					for out_k, can_k in canon_map.items():
+						if result.get(out_k):
+							continue
+						val = _resolve_attr(can_k, synonyms_map_attr.get(out_k, []))
+						if val:
+							result[out_k] = val
 		except Exception:
 			pass
 
@@ -1046,16 +1341,20 @@ def build_dynamic_data(
 		pf = parse_float(cap_w)
 		if pf and pf > 0:
 			result["module_power_per_panel_watt"] = fmt_number(pf, 0, "Watt")
-	# Weitere Felder direkt aus project_details übernehmen (override)
+	# Weitere Felder direkt aus project_details übernehmen (override) – neutrale Tokens schützen DB-Werte
+	neutral_tokens = {"siehe produktdatenblatt", "-", "n/a", "na", "keine angabe"}
 	for k in ("module_cell_technology", "module_structure", "module_cell_type", "module_version", "module_guarantee_combined"):
 		v = project_details.get(k)
-		if v not in (None, ""):
-			result[k] = as_str(v)
+		if v in (None, ""):
+			continue
+		v_str = as_str(v).strip()
+		if k == "module_guarantee_combined":
+			result[k] = v_str
+		else:
+			if (not result.get(k)) or (v_str.lower() not in neutral_tokens):
+				result[k] = v_str
 
-	# Sicherstellen, dass die Modul-Detailfelder nicht leer bleiben – bevorzugt neutraler Text statt '-'
-	for _k in ("module_cell_technology", "module_structure", "module_cell_type", "module_version"):
-		if not result.get(_k):
-			result[_k] = "siehe Produktdatenblatt"
+	# Garantiefallback nur, wenn leer
 	if not result.get("module_guarantee_combined"):
 		result["module_guarantee_combined"] = "siehe Produktdatenblatt"
 

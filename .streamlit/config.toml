@@ -1,0 +1,11 @@
+[server]
+headless = false
+
+[browser]
+serverAddress = "localhost"
+serverPort = 8501
+gatherUsageStats = false
+
+[logger]
+level = "error"
+messageFormat = "%(asctime)s %(message)s"

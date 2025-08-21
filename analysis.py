@@ -825,6 +825,63 @@ def _render_overview_section(results: Dict[str, Any], texts: Dict[str, str], viz
     
     st.markdown("---")
     
+    # NEU: 20 Jahre – Jährliche Stromkosten (ohne/mit Erhöhung) als shadcn-ähnliches Balkendiagramm
+    st.subheader(" 20 Jahre – Jährliche Stromkosten (ohne/mit Erhöhung)")
+    try:
+        years = 20
+        # Robuste Basis aus mehreren Quellen
+        base_annual_cost = float(
+            _get_baseline_annual_costs_without_pv(
+                st.session_state.get('project_data', {}),
+                st.session_state.get('project_data', {}).get('project_details', {}),
+                results,
+            )
+        ) or float(annual_total_costs_without_pv)
+        inc_pct = float(electricity_price_increase)
+        series_no_inc = _compute_annual_cost_series(base_annual_cost, years, 0.0)
+        series_with_inc = _compute_annual_cost_series(base_annual_cost, years, inc_pct)
+
+        # Speichere dynamische Keys für spätere PDF-Nutzung
+        st.session_state["page3_20y_series_years"] = list(range(1, years + 1))
+        st.session_state["page3_20y_series_no_inc"] = series_no_inc
+        st.session_state["page3_20y_series_with_inc"] = series_with_inc
+        st.session_state["page3_20y_axis_top"] = max(max(series_no_inc or [0]), max(series_with_inc or [0]))
+
+        import plotly.graph_objects as go
+        fig_20y = go.Figure()
+        x_vals = list(range(1, years + 1))
+        # Farben im shadcn-Stil (hell/dunkel, dezent)
+        color_no_inc = "#9CA3AF"  # slate-400
+        color_with_inc = "#1F4B99"  # dunkles Blau passend zum Corporate
+        fig_20y.add_bar(
+            x=x_vals,
+            y=series_no_inc,
+            name="Ohne Erhöhung",
+            marker_color=color_no_inc,
+            hovertemplate="Jahr %{x}: %{y:,.0f} €<extra></extra>",
+        )
+        fig_20y.add_bar(
+            x=x_vals,
+            y=series_with_inc,
+            name="Mit Erhöhung",
+            marker_color=color_with_inc,
+            hovertemplate="Jahr %{x}: %{y:,.0f} €<extra></extra>",
+        )
+        fig_20y.update_layout(
+            barmode="group",
+            title="Jährliche Stromkosten je Jahr (20 Jahre)",
+            xaxis_title="Jahr",
+            yaxis_title="€ pro Jahr",
+        )
+        # Shadcn-ähnliches Theme und punktiertes Grid
+        _apply_shadcn_like_theme(fig_20y)
+        fig_20y.update_yaxes(showgrid=True, gridcolor="rgba(0,0,0,0.12)", griddash="dot", gridwidth=1)
+        fig_20y.update_xaxes(showgrid=False)
+
+        st.plotly_chart(fig_20y, use_container_width=True)
+    except Exception as _e:
+        st.warning("20-Jahre Stromkosten-Diagramm konnte nicht erzeugt werden.")
+    
     # NEUE SEKTION: Erweiterte Visualisierungen
     st.subheader(" Erweiterte Visualisierungen")
     
@@ -1926,6 +1983,95 @@ def _apply_shadcn_like_theme(fig: go.Figure) -> None:
     except Exception:
         # Theme ist best-effort; bei Problemen still ignore
         pass
+
+
+def _get_baseline_annual_costs_without_pv(
+    project_data: Dict[str, Any] | None,
+    project_details: Dict[str, Any] | None,
+    analysis_results: Dict[str, Any] | None,
+) -> float:
+    """Ermittelt die jährlichen Stromkosten (ohne PV) mit robusten Fallbacks.
+
+    Reihenfolge der Quellen (analog placeholders._get_monthly_cost_eur):
+    - project_data: monatlich Haushalt/Heizung, sonst jährlich -> Monat -> *12
+    - project_details: wie oben
+    - analysis_results: jahresverbrauch * aktueller_strompreis
+    """
+    project_data = project_data or {}
+    project_details = project_details or {}
+    analysis_results = analysis_results or {}
+
+    def _parse_float(val: Any) -> float | None:
+        try:
+            if val is None:
+                return None
+            if isinstance(val, (int, float)):
+                return float(val)
+            s = str(val).strip()
+            s = re.sub(r"[^0-9,\.\-]", "", s).replace(",", ".")
+            return float(s) if s not in {"", "-", "."} else None
+        except Exception:
+            return None
+
+    # 1) project_data monatlich
+    hh = _parse_float(project_data.get("stromkosten_haushalt_euro_monat")) or 0.0
+    hz = _parse_float(project_data.get("stromkosten_heizung_euro_monat")) or 0.0
+    if (hh + hz) > 0:
+        return float((hh + hz) * 12.0)
+    # jährlich -> Monat
+    ah = _parse_float(project_data.get("stromkosten_haushalt_euro_jahr")) or 0.0
+    az = _parse_float(project_data.get("stromkosten_heizung_euro_jahr")) or 0.0
+    total_a = ah + az
+    if total_a > 0:
+        return float(total_a)
+    # gesamtsumme jährlich
+    total_a2 = _parse_float(project_data.get("stromkosten_gesamt_euro_jahr"))
+    if total_a2 is None:
+        total_a2 = _parse_float(project_data.get("stromkosten_gesamt_jahr_eur"))
+    if (total_a2 or 0.0) > 0:
+        return float(total_a2 or 0.0)
+
+    # 2) project_details
+    hh = _parse_float(project_details.get("stromkosten_haushalt_euro_monat")) or 0.0
+    hz = _parse_float(project_details.get("stromkosten_heizung_euro_monat")) or 0.0
+    if (hh + hz) > 0:
+        return float((hh + hz) * 12.0)
+    ah = _parse_float(project_details.get("stromkosten_haushalt_euro_jahr")) or 0.0
+    az = _parse_float(project_details.get("stromkosten_heizung_euro_jahr")) or 0.0
+    total_a = ah + az
+    if total_a > 0:
+        return float(total_a)
+    total_a2 = _parse_float(project_details.get("stromkosten_gesamt_euro_jahr"))
+    if total_a2 is None:
+        total_a2 = _parse_float(project_details.get("stromkosten_gesamt_jahr_eur"))
+    if (total_a2 or 0.0) > 0:
+        return float(total_a2 or 0.0)
+
+    # 3) analysis_results (verbrauch * preis)
+    cons_kwh = _parse_float(analysis_results.get("jahresstromverbrauch_fuer_hochrechnung_kwh")) or 0.0
+    price_eur_kwh = _parse_float(analysis_results.get("aktueller_strompreis_fuer_hochrechnung_euro_kwh")) or 0.0
+    if cons_kwh > 0 and price_eur_kwh > 0:
+        return float(cons_kwh * price_eur_kwh)
+
+    return 0.0
+
+def _compute_annual_cost_series(base_annual_cost: float, years: int, inc_percent: float) -> List[float]:
+    """Erzeugt eine Jahreskosten-Serie über 'years' Jahre.
+
+    - base_annual_cost: Startwert in Jahr 1 (€/Jahr)
+    - inc_percent: jährliche Preissteigerung in % (z. B. 5.0)
+    Rückgabe: Liste der jährlichen Kosten je Jahr (nicht kumuliert).
+    """
+    try:
+        years = int(max(1, years))
+        base = float(max(0.0, base_annual_cost))
+        r = max(0.0, float(inc_percent)) / 100.0
+    except Exception:
+        years, base, r = 20, 0.0, 0.0
+    series: List[float] = []
+    for i in range(years):
+        series.append(base * ((1.0 + r) ** i))
+    return series
 
 
 def _add_chart_controls(
@@ -6831,6 +6977,29 @@ def render_analysis(
                 admin_default_price_increase,
             )
         )
+
+    # Sichtbare 20J-Balken – nur vorbereiten (Render unten zwischen Verbrauchs-Pie und Cashflow)
+    try:
+        current_results = st.session_state.get("calculation_results", results or {}) or {}
+        proj = st.session_state.get("project_data", {}) or {}
+        annual_total_costs_without_pv = _get_baseline_annual_costs_without_pv(
+            proj,
+            proj.get("project_details", {}),
+            current_results,
+        )
+        inc_pct = float(
+            current_results.get(
+                "electricity_price_increase_rate_effective_percent",
+                current_price_increase_for_ui,
+            )
+            or current_price_increase_for_ui
+        )
+        years = 20
+        st.session_state["page3_20y_series_years"] = list(range(1, years + 1))
+        st.session_state["page3_20y_series_no_inc"] = _compute_annual_cost_series(annual_total_costs_without_pv, years, 0.0)
+        st.session_state["page3_20y_series_with_inc"] = _compute_annual_cost_series(annual_total_costs_without_pv, years, inc_pct)
+    except Exception:
+        pass
     sim_duration_user_input = st.sidebar.number_input(
         get_text(texts, "analysis_sim_duration_label", "Simulationsdauer (Jahre)"),
         min_value=1,
@@ -7089,37 +7258,6 @@ def render_analysis(
                 )
             )
 
-        _add_chart_controls(
-            "cum_cashflow",
-            texts,
-            default_type="area",
-            supported_types=["area", "line", "bar"],
-            viz_settings=viz_settings,
-        )
-        fig_cum_cf = _create_cumulative_cashflow_chart(
-            results_for_display, texts, viz_settings, "cum_cashflow"
-        )
-        if fig_cum_cf:
-            # Modernes Design anwenden!
-            if CHART_MODERNIZER_AVAILABLE:
-                fig_cum_cf = apply_modern_style_to_figure(fig_cum_cf, "Kumulativer Cashflow")
-            st.plotly_chart(
-                fig_cum_cf,
-                use_container_width=True,
-                key="analysis_cum_cashflow_chart_final_v8_corrected",
-            )
-            results_for_display["cumulative_cashflow_chart_bytes"] = (
-                _export_plotly_fig_to_bytes(fig_cum_cf, texts)
-            )
-        else:
-            st.info(
-                get_text(
-                    texts,
-                    "no_data_for_cumulative_cashflow_chart_v3",
-                    "Daten für kum. Cashflow unvollständig.",
-                )
-            )
-        
         col_chart1, col_chart2 = st.columns(2)
         with col_chart1:
             st.markdown("##### Stromverbrauch-Aufteilung")
@@ -7141,6 +7279,74 @@ def render_analysis(
                 st.plotly_chart(fig_pv_usage, use_container_width=True, key="modern_pv_usage_pie")
             else:
                 _render_pv_usage_pie(results_for_display, texts, viz_settings, "pv_usage_pie")
+
+        # NEU: Stromkosten (20 Jahre) – jetzt direkt unter den Pies platzieren
+        try:
+            import plotly.graph_objects as go
+            x_vals = st.session_state.get("page3_20y_series_years") or []
+            series_no_inc = st.session_state.get("page3_20y_series_no_inc") or []
+            series_with_inc = st.session_state.get("page3_20y_series_with_inc") or []
+            if x_vals and series_no_inc and series_with_inc:
+                fig_20y = go.Figure()
+                color_no_inc = "#9CA3AF"  # slate-400
+                color_with_inc = "#1F4B99"  # corporate blau
+                fig_20y.add_bar(
+                    x=x_vals,
+                    y=series_no_inc,
+                    name="Ohne Erhöhung",
+                    marker_color=color_no_inc,
+                    hovertemplate="Jahr %{x}: %{y:,.0f} €<extra></extra>",
+                )
+                fig_20y.add_bar(
+                    x=x_vals,
+                    y=series_with_inc,
+                    name="Mit Erhöhung",
+                    marker_color=color_with_inc,
+                    hovertemplate="Jahr %{x}: %{y:,.0f} €<extra></extra>",
+                )
+                fig_20y.update_layout(
+                    barmode="group",
+                    title="",
+                    xaxis_title="Jahr",
+                    yaxis_title="€ pro Jahr",
+                )
+                _apply_shadcn_like_theme(fig_20y)
+                fig_20y.update_yaxes(showgrid=True, gridcolor="rgba(0,0,0,0.12)", griddash="dot", gridwidth=1)
+                fig_20y.update_xaxes(showgrid=False)
+                st.plotly_chart(fig_20y, use_container_width=True, key="analysis_costs_20y_positioned_between_pie_and_cumcf")
+        except Exception:
+            pass
+
+        # Danach: Kumulierten Cashflow rendern
+        _add_chart_controls(
+            "cum_cashflow",
+            texts,
+            default_type="area",
+            supported_types=["area", "line", "bar"],
+            viz_settings=viz_settings,
+        )
+        fig_cum_cf = _create_cumulative_cashflow_chart(
+            results_for_display, texts, viz_settings, "cum_cashflow"
+        )
+        if fig_cum_cf:
+            if CHART_MODERNIZER_AVAILABLE:
+                fig_cum_cf = apply_modern_style_to_figure(fig_cum_cf, "Kumulativer Cashflow")
+            st.plotly_chart(
+                fig_cum_cf,
+                use_container_width=True,
+                key="analysis_cum_cashflow_chart_final_v8_corrected",
+            )
+            results_for_display["cumulative_cashflow_chart_bytes"] = (
+                _export_plotly_fig_to_bytes(fig_cum_cf, texts)
+            )
+        else:
+            st.info(
+                get_text(
+                    texts,
+                    "no_data_for_cumulative_cashflow_chart_v3",
+                    "Daten für kum. Cashflow unvollständig.",
+                )
+            )
     st.markdown("---")
 
     # Live-Vorschau für erweiterte Berechnungen
