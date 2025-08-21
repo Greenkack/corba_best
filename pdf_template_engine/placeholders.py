@@ -905,7 +905,9 @@ def build_dynamic_data(
 		grid_feedin_kwh = parse_float(analysis_results.get("grid_feed_in_kwh")) or 3214.0
 		
 		# Batteriespeicherung (oberes Diagramm Seite 2)
-		battery_charge_kwh = parse_float(analysis_results.get("battery_charge_kwh")) or 3627.0
+		battery_charge_kwh = parse_float(analysis_results.get("battery_charge_kwh"))
+		if battery_charge_kwh is None:
+			battery_charge_kwh = 3627.0  # Fallback nur wenn nicht gesetzt
 		
 		# Batterieentladung für Eigenverbrauch (unteres Diagramm Seite 2)
 		# Verwende den korrigierten Wert aus der Berechnung oben
