@@ -604,6 +604,9 @@ def build_dynamic_data(
 	# Falls Speicherkapazität bekannt: Batteriesummen überschreiben (heuristisch) mit Kapazität × 300
 	if battery_expected_annual_kwh and battery_expected_annual_kwh > 0:
 		charge_sum = float(battery_expected_annual_kwh)
+		
+		# Korrigierte Logik für Batterieentladung basierend auf tatsächlichem Verbrauchsmuster
+		# Erst mal den gleichen Wert setzen, wird später korrigiert
 		discharge_sc_sum = float(battery_expected_annual_kwh)
 
 	# Konsistenz- und Realismus-Korrekturen für Seite 2
@@ -866,20 +869,32 @@ def build_dynamic_data(
 	# Seite 3 – KORRIGIERTE Berechnungen für RENDITE-Bereich
 	try:
 		# 1. Stromtarif des Kunden berechnen (€/kWh)
+		# Priorität: direkte Tarifangabe -> aus analysis_results -> aus monatlichen Kosten -> Fallback
 		price_eur_per_kwh = 0.0
 		
-		# Aus monatlichen Kosten berechnen
-		monthly_household = parse_float(project_data.get("stromkosten_haushalt_euro_monat")) or 0.0
-		monthly_heating = parse_float(project_data.get("stromkosten_heizung_euro_monat")) or 0.0
-		annual_cost_total = (monthly_household + monthly_heating) * 12.0
+		# Direkte Tarifangabe aus project_details bevorzugen
+		if project_details and project_details.get("electricity_price_kwh"):
+			price_eur_per_kwh = parse_float(project_details.get("electricity_price_kwh"))
 		
-		# Jahresverbrauch
-		annual_consumption = parse_float(project_data.get("annual_consumption_kwh")) or 3000.0
+		# Aus analysis_results (bereits berechneter Wert)
+		if not price_eur_per_kwh and analysis_results:
+			price_eur_per_kwh = parse_float(analysis_results.get("aktueller_strompreis_fuer_hochrechnung_euro_kwh"))
 		
-		# Stromtarif berechnen: Jahreskosten / Jahresverbrauch
-		if annual_consumption > 0 and annual_cost_total > 0:
-			price_eur_per_kwh = annual_cost_total / annual_consumption
-		else:
+		# Aus monatlichen Kosten berechnen (nur wenn kein direkter Tarif verfügbar)
+		if not price_eur_per_kwh:
+			monthly_household = parse_float(project_data.get("stromkosten_haushalt_euro_monat")) or 0.0
+			monthly_heating = parse_float(project_data.get("stromkosten_heizung_euro_monat")) or 0.0
+			annual_cost_total = (monthly_household + monthly_heating) * 12.0
+			
+			# Jahresverbrauch
+			annual_consumption = parse_float(project_data.get("annual_consumption_kwh")) or 3000.0
+			
+			# Stromtarif berechnen: Jahreskosten / Jahresverbrauch
+			if annual_consumption > 0 and annual_cost_total > 0:
+				price_eur_per_kwh = annual_cost_total / annual_consumption
+		
+		# Fallback
+		if not price_eur_per_kwh or price_eur_per_kwh <= 0:
 			price_eur_per_kwh = 0.37  # Fallback
 		
 		# 2. Werte aus Seite 2 der PDF holen
@@ -893,7 +908,11 @@ def build_dynamic_data(
 		battery_charge_kwh = parse_float(analysis_results.get("battery_charge_kwh")) or 3627.0
 		
 		# Batterieentladung für Eigenverbrauch (unteres Diagramm Seite 2)
-		battery_discharge_kwh = parse_float(analysis_results.get("battery_discharge_for_sc_kwh")) or 1264.0
+		# Verwende den korrigierten Wert aus der Berechnung oben
+		if 'discharge_sc_sum' in locals() and discharge_sc_sum is not None:
+			battery_discharge_kwh = float(discharge_sc_sum)
+		else:
+			battery_discharge_kwh = parse_float(analysis_results.get("battery_discharge_for_sc_kwh")) or 1264.0
 		
 		# 3. Einspeisevergütung ermitteln
 		eeg_eur_per_kwh = 0.0786  # 7,86 ct für <10kWp Teileinspeisung (Fallback)
