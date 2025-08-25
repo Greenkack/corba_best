@@ -1958,7 +1958,7 @@ class AdvancedCalculationsIntegrator:
         for rec in top_recommendations:
             rec["annual_benefit"] = rec["benefit_potential"]
             rec["investment"] = rec["cost_estimate"]
-            rec["payback"] = (
+            rec["payback"] =  (
                 rec["investment"] / rec["annual_benefit"]
                 if rec["annual_benefit"] > 0
                 else 99
@@ -1982,72 +1982,7 @@ class AdvancedCalculationsIntegrator:
             "top_recommendations": top_recommendations,
             "system_optimization": system_optimization,
         }
-
-    def calculate_optimization_impact(
-        self, calc_results: Dict[str, Any], new_params: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Berechnet Auswirkungen von Optimierungen"""
-
-        # Aktuelle Werte
-        current_yield = calc_results.get("annual_pv_production_kwh", 10000)
-        current_self_sufficiency = calc_results.get("self_supply_rate_percent", 65)
-        current_npv = calc_results.get("npv_25_years", 8000)
-
-        # Neue Parameter
-        new_tilt = new_params.get("tilt", 30)
-        new_azimuth = new_params.get("azimuth", 0)
-        new_battery_size = new_params.get("battery_size", 6.0)
-        new_dc_ac_ratio = new_params.get("dc_ac_ratio", 1.1)
-
-        # Auswirkungen berechnen (vereinfacht)
-        # Neigung und Ausrichtung
-        tilt_factor = 1.0 - abs(new_tilt - 30) * 0.01  # Optimal bei 30°
-        azimuth_factor = 1.0 - abs(new_azimuth) * 0.005  # Optimal bei 0° (Süd)
-
-        # DC/AC Verhältnis
-        dc_ac_factor = 1.0 + (new_dc_ac_ratio - 1.1) * 0.1
-
-        # Batteriegröße
-        battery_factor = min(1.2, 1.0 + (new_battery_size - 6.0) * 0.03)
-
-        # Neue Werte
-        new_yield = current_yield * tilt_factor * azimuth_factor * dc_ac_factor
-        yield_increase = (new_yield / current_yield - 1) * 100
-        additional_kwh = new_yield - current_yield
-
-        new_self_sufficiency = min(95, current_self_sufficiency * battery_factor)
-        self_sufficiency_delta = new_self_sufficiency - current_self_sufficiency
-
-        # NPV-Änderung (grobe Schätzung)
-        additional_investment = (new_battery_size - 6.0) * 500  # 500€ pro kWh
-        additional_annual_benefit = additional_kwh * 0.25  # 25ct/kWh Nutzen
-        npv_delta = (
-            additional_annual_benefit * 15 - additional_investment
-        )  # Vereinfacht
-        roi_delta = (
-            (npv_delta / additional_investment * 100)
-            if additional_investment > 0
-            else 0
-        )
-
-        payback_change = (
-            (additional_investment / additional_annual_benefit)
-            if additional_annual_benefit > 0
-            else 0
-        )
-
-        return {
-            "yield_increase": yield_increase,
-            "additional_kwh": additional_kwh,
-            "new_self_sufficiency": new_self_sufficiency,
-            "self_sufficiency_delta": self_sufficiency_delta,
-            "npv_delta": npv_delta,
-            "roi_delta": roi_delta,
-            "additional_investment": additional_investment,
-            "payback_change": payback_change,
-        }
-
-    # ...existing code...
+    # (Entfernt: fehlerhafter top-level Block mit Speicherlogik-Duplikat)
 
 
 def format_kpi_value(
@@ -2766,56 +2701,35 @@ def perform_calculations(
     monthly_feed_in_kwh = [0.0] * 12
     monthly_grid_bezug_kwh = [0.0] * 12
 
+
     for i in range(12):
         prod_month = monthly_pv_production_kwh[i]
         cons_month = monthly_total_consumption_kwh[i]
 
-        # Direkter Eigenverbrauch
-        direct_sc = min(prod_month * direct_sc_from_production_factor, cons_month)
+        # 1. Direkter Eigenverbrauch: Minimum aus Produktion und Verbrauch
+        direct_sc = min(prod_month, cons_month)
         monthly_direct_self_consumption_kwh[i] = direct_sc
 
-        rem_prod_after_direct_sc = prod_month - direct_sc
-        rem_cons_after_direct_sc = cons_month - direct_sc
+        # 2. Überschuss nach Direktverbrauch
+        pv_ueberschuss = max(0.0, prod_month - direct_sc)
+        rest_verbrauch = max(0.0, cons_month - direct_sc)
 
-        # Speicherlogik (vereinfacht: Speicher wird geladen, wenn Überschuss, und entladen, wenn Bedarf)
-        if include_storage and selected_storage_capacity_kwh > 0:
-            storage_cycles_per_year_val = float(
-                global_constants.get("storage_cycles_per_year", 250) or 250
-            )
-            # Max. mögliche Ladung/Entladung pro Monat basierend auf Kapazität und Zyklen (vereinfacht)
-            monthly_storage_charge_potential_effective = (
-                selected_storage_capacity_kwh * (storage_cycles_per_year_val / 12.0)
-            )  # Max kWh die pro Monat theoretisch geladen/entladen werden könnten
+        # 3. Speicherlogik: Speicher wird nur mit echtem PV-Überschuss geladen
+        speicher_ladung_brutto = min(pv_ueberschuss, selected_storage_capacity_kwh) if include_storage and selected_storage_capacity_kwh > 0 else 0.0
+        speicher_ladung_netto = speicher_ladung_brutto * storage_efficiency
+        monthly_storage_charge_kwh[i] = speicher_ladung_netto
 
-            # Laden des Speichers
-            # Wie viel kann *vor* Ladeverlusten in den Speicher?
-            potential_charge_to_storage_brutto = min(
-                rem_prod_after_direct_sc,
-                (
-                    monthly_storage_charge_potential_effective / storage_efficiency
-                    if storage_efficiency > 0
-                    else float("inf")
-                ),
-            )
-            # Tatsächliche Nettoladung unter Berücksichtigung des Wirkungsgrads
-            actual_charge_into_storage_netto = (
-                potential_charge_to_storage_brutto * storage_efficiency
-            )
-            monthly_storage_charge_kwh[i] = (
-                actual_charge_into_storage_netto  # Gespeichert: wie viel *im* Speicher ankommt
-            )
-            rem_prod_after_direct_sc -= potential_charge_to_storage_brutto  # Vom Überschuss abziehen, was zum Laden verwendet wurde (brutto)
+        # 4. Speicherentladung: Deckung des Restverbrauchs, begrenzt durch Speicherladung
+        speicher_nutzung = min(speicher_ladung_netto, rest_verbrauch)
+        monthly_storage_discharge_for_sc_kwh[i] = speicher_nutzung
 
-            # Entladen des Speichers für Eigenverbrauch
-            discharge_from_storage_for_sc = min(
-                actual_charge_into_storage_netto, rem_cons_after_direct_sc
-            )  # Kann max. das entladen, was geladen wurde und was gebraucht wird
-            monthly_storage_discharge_for_sc_kwh[i] = discharge_from_storage_for_sc
-            rem_cons_after_direct_sc -= discharge_from_storage_for_sc
+        # 5. Netzeinspeisung: PV-Überschuss nach Speicherladung
+        netzeinspeisung = max(0.0, pv_ueberschuss - speicher_ladung_brutto)
+        monthly_feed_in_kwh[i] = netzeinspeisung
 
-        # Verbleibender Überschuss geht ins Netz, verbleibender Bedarf aus dem Netz
-        monthly_feed_in_kwh[i] = max(0, rem_prod_after_direct_sc)
-        monthly_grid_bezug_kwh[i] = max(0, rem_cons_after_direct_sc)
+        # 6. Netzbezug: Restverbrauch nach Speichernutzung
+        grid_bezug = max(0.0, rest_verbrauch - speicher_nutzung)
+        monthly_grid_bezug_kwh[i] = grid_bezug
 
     eigenverbrauch_pro_jahr_kwh = sum(monthly_direct_self_consumption_kwh) + sum(
         monthly_storage_discharge_for_sc_kwh
