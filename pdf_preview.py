@@ -13,7 +13,8 @@ from datetime import datetime
 import time
 
 try:
-    from pdf_generator import generate_offer_pdf_with_main_templates as generate_offer_pdf
+    # Verwende vereinfachten Wrapper, der zwingend den Template-Flow nutzt
+    from pdf_generator import generate_offer_pdf_simple as generate_offer_pdf
     from reportlab.lib.pagesizes import A4
     from reportlab.pdfgen import canvas
     from PIL import Image

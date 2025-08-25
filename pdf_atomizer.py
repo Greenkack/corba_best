@@ -60,6 +60,8 @@ class PDFAtoms(dict):
         self["encrypt"]  = {}
         self["raw"]      = {}         # unparsed streams (fallback)
 
+
+
 # ---------------------------------------------------------------------------
 # 3. Hauptklasse – Atomizer
 # ---------------------------------------------------------------------------
@@ -111,7 +113,7 @@ class PDFAatomizer:
 
     def to_json(self, out: Path):
         log("Serializing atoms → JSON …")
-        out.write_text(json.dumps(self.atoms, indent=2, default=str))
+        out.write_text(json.dumps(self.atoms, indent=2, ensure_ascii=False), encoding="utf-8")
 
     def text_to_yaml(self, out: Path):
         import yaml, collections, re
@@ -124,6 +126,62 @@ class PDFAatomizer:
                 slug = re.sub(r"[^a-z0-9]+", "_", item["text"].lower()).strip("_")[:60]
                 data[page_key][slug] = [item["x"], item["y"]]
         out.write_text(yaml.dump(data, allow_unicode=True))
+
+    # -------------------------------------------------------------------
+    # 3.1.x  PikePDF → Plain-Python Snapshot (JSON-safe)
+    # -------------------------------------------------------------------
+    def _snapshot(self, obj, _depth=0, _max_depth=10):
+        """
+        Konvertiert pikepdf-Objekte in reine Python-Typen (dict/list/str/...),
+        damit self.atoms JSON-serialisierbar bleibt – auch nach Schließen der PDF.
+        Streams werden nicht als Bytes gezogen; nur schlanke Metadaten.
+        """
+        if _depth > _max_depth:
+            return "<max_depth>"
+
+        if obj is None or isinstance(obj, (bool, int, float, str)):
+            return obj
+
+        # Dictionary-artige PikePDF-Objekte
+        try:
+            if hasattr(obj, "items"):
+                out = {}
+                for k, v in obj.items():
+                    ks = str(k)
+                    out[ks] = self._snapshot(v, _depth + 1, _max_depth)
+                # Stream? -> nur Metadaten anhängen
+                if hasattr(obj, "read_bytes"):
+                    try:
+                        length = None
+                        try:
+                            length = int(obj.get("/Length", 0))
+                        except Exception:
+                            length = None
+                        out["__stream__"] = True
+                        out["Length"] = length
+                        if "/Filter" in obj:
+                            out["Filter"] = str(obj["/Filter"])
+                        if "/Subtype" in obj:
+                            out["Subtype"] = str(obj["/Subtype"])
+                    except Exception as e:
+                        out["__stream__"] = f"<error {e}>"
+                return out
+        except Exception:
+            pass
+
+        # Listen-/Array-artige PikePDF-Objekte
+        try:
+            if hasattr(obj, "__iter__") and not isinstance(obj, (str, bytes, bytearray, dict)):
+                return [self._snapshot(x, _depth + 1, _max_depth) for x in obj]
+        except Exception:
+            pass
+
+        # Namen/IndirectRefs/etc. -> String
+        try:
+            return str(obj)
+        except Exception:
+            return f"<unserializable {type(obj).__name__}>"
+
 
     # -----------------------------------------------------------------------
     # 3.2 Private Helpers – Extractors
@@ -146,49 +204,55 @@ class PDFAatomizer:
 
 
     def _extract_trailer(self, pdf: pikepdf.Pdf):
-        self.atoms["trailer"] = pdf.trailer
+        self.atoms["trailer"] = self._snapshot(pdf.trailer)
         log("Trailer captured")
 
     def _extract_catalog(self, pdf: pikepdf.Pdf):
-        # Pikepdf ≥ 8: Root heißt groß geschrieben oder liegt im Trailer
         cat = getattr(pdf, "Root", None) or pdf.trailer["/Root"]
-        self.atoms["catalog"] = cat
+        self.atoms["catalog"] = self._snapshot(cat)
         log("Catalog stored")
 
 
+
     def _extract_pages(self, pdf: pikepdf.Pdf):
-        for i, page in enumerate(pdf.pages):
-            pg = {}
-            pg_dict = page.obj
-            pg["dict"] = pg_dict
-            # Resources
-            pg["resources"] = pg_dict.Resources or {}
-            # Content stream hashes
-          #  content_bytes = page.read_contents()
-           # pg["content_sha"] = sha256(content_bytes) if content_bytes else None
-            # Images via PyMuPDF (bequemer)
-            with fitz.open(self.src) as doc:
+        with fitz.open(self.src) as doc:  # einmal öffnen (Performance)
+            for i, page in enumerate(pdf.pages):
+                pg = {}
+                pg_dict = page.obj
+
+                pg["dict"] = self._snapshot(pg_dict)
+                try:
+                    res = pg_dict.Resources or {}
+                except Exception:
+                    res = {}
+                pg["resources"] = self._snapshot(res)
+
                 p = doc.load_page(i)
-                # ---- Textkoordinaten ----
                 pg["text"] = self._extract_text_positions(p)
-                # ---- Images (bleibt) ----
+
                 images = []
                 for img in p.get_images(full=True):
                     xref = img[0]
-                    images.append(
-                        dict(xref=xref,
-                             sha=sha256(doc.extract_image(xref)["image"]))
-                    )
+                    try:
+                        raw = doc.extract_image(xref)
+                        images.append(dict(xref=xref, sha=sha256(raw["image"])))
+                    except Exception:
+                        images.append(dict(xref=xref, sha=None))
                 pg["images"] = images
 
-            # Annotations
-            pg["annots"] = []
-            if "Annots" in pg_dict:
-                for a in pg_dict.Annots:
-                    pg["annots"].append(a)
-            self.atoms["pages"][i] = pg
+                pg["annots"] = []
+                try:
+                    if "Annots" in pg_dict:
+                        for a in pg_dict.Annots:
+                            pg["annots"].append(self._snapshot(a))
+                except Exception:
+                    pass
+
+                self.atoms["pages"][i] = pg
+
         log(f"Parsed {len(self.atoms['pages'])} pages")
-    
+
+
         # -------------------------------------------------------------------
     # 3.2.x  Text-Koordinaten
     # -------------------------------------------------------------------
@@ -217,7 +281,7 @@ class PDFAatomizer:
     def _extract_embedded_files(self, pdf: pikepdf.Pdf):
         try:
             ef_names = list(pdf.attachments.keys())
-            self.atoms["embeds"]["names"] = ef_names
+            self.atoms["embeds"]["names"] = self._snapshot(ef_names)
         except AttributeError:
             pass
             
@@ -229,7 +293,7 @@ class PDFAatomizer:
         try:
             root = getattr(pdf, "Root", None) or pdf.trailer.get("/Root")
             if root and "/Names" in root and "/JavaScript" in root.Names:
-                self.atoms["js"] = root.Names.JavaScript
+                self.atoms["js"] = self._snapshot(root.Names.JavaScript)
                 log(f"Found {len(self.atoms['js'])} JavaScript snippets")
         except (AttributeError, KeyError):
             # keine JS-Namenstruktur ↠ überspringen
@@ -246,14 +310,14 @@ class PDFAatomizer:
             sigs = list(pdf.pike_signatures)
 
         if sigs:
-            self.atoms["signatures"]["count"] = len(sigs)
-            self.atoms["signatures"]["fields"] = sigs
+            self.atoms["signatures"]["count"] = self. _snapshot(sigs)
+            self.atoms["signatures"]["fields"] = self._snapshot(sigs)
             log(f"Captured {len(sigs)} signatures")
 
 
     def _extract_encrypt(self, pdf: pikepdf.Pdf):
         if pdf.is_encrypted:
-            self.atoms["encrypt"] = pdf.encryption
+            self.atoms["encrypt"] = self._snapshot(pdf.encryption)
             log("Encryption dictionary stored")
 
     def _dump_raw_objects(self, pdf: pikepdf.Pdf):
@@ -272,14 +336,49 @@ class PDFAatomizer:
 
     def _apply_atoms_to_pdf(self, pdf: pikepdf.Pdf):
         """
-        Platzhalter: rekonstruiert Objekte aus self.atoms in pdf.
-        Muss für *bitgenaue* Roundtrips weiter ausgebaut werden.
+        Minimal-sicherer Reinjector:
+        - normalisiert Trailer-Keys auf führendes '/'
+        - schreibt NUR skalare Werte (str/int/float/bool/None)
+        - ignoriert komplexe Keys wie /Root, /Prev, /Encrypt, /Info (wenn dict)
+        - setzt optional XMP/Info über pikepdf-Metadaten-API
         """
-        # Beispiel: Trailer‑Eintrag übernehmen
-        for k, v in self.atoms["trailer"].items():
-            pdf.trailer[k] = v
-        # Mehr Logik: Seiten, XObjects, Annotations, Signaturen, …
-        log("  apply_atoms_to_pdf() benötigt projektspezifische Logik")
+        def _norm_key(k):
+            s = str(k)
+            return s if s.startswith("/") else "/" + s.lstrip("/")
+
+        trailer_snapshot = self.atoms.get("trailer") or {}
+        safe_scalars = (str, int, float, bool, type(None))
+
+        # 1) Trailer: nur "ungefährliche" skalare Werte schreiben
+        for k, v in trailer_snapshot.items():
+            key = _norm_key(k)
+
+            # Komplexe, heikle Keys grundsätzlich überspringen
+            if key in ("/Root", "/Encrypt", "/Prev", "/XRefStm", "/Info", "/ID"):
+                continue
+
+            if isinstance(v, safe_scalars):
+                try:
+                    pdf.trailer[key] = v
+                except Exception:
+                    pass  # still schweigend überspringen
+            # Nicht-skalare Werte NICHT zurückschreiben
+
+        # 2) Metadaten optional via XMP setzen (falls du was in atoms["meta"] sammelst)
+        meta = self.atoms.get("meta") or {}
+        try:
+            # Öffnet XMP; set_pikepdf_as_editor=False verhindert Editor-Stempel
+            with pdf.open_metadata(set_pikepdf_as_editor=False) as md:
+                # Z. B. simple Schlüssel übernehmen (Title, Author, Subject …)
+                for k, v in meta.items():
+                    if isinstance(v, safe_scalars):
+                        # md ist ein dict-ähnliches Mapping (XMP)
+                        md[k] = v
+        except Exception:
+            pass
+
+        log("  apply_atoms_to_pdf(): safe trailer/meta reinjection done")
+
 
 # ---------------------------------------------------------------------------
 # 4. CLI‑Wrapper
