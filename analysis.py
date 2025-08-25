@@ -1541,6 +1541,66 @@ def _create_chart_by_type(
     return fig
 
 
+def create_four_type_chart(
+    data: Dict[str, Any],
+    title: str,
+    chart_key: str,
+    x_label: str = "",
+    y_label: str = "",
+):
+    """Spezielle Helper-Funktion nur mit vier erlaubten Typen: Balken, Säulen, Kreis, Donut.
+    Unterstützt entweder (x,y) oder (labels,values).
+    """
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        st.markdown(f"### {title}")
+    with col2:
+        chart_type = st.selectbox(
+            "Diagrammtyp:",
+            ["Säulen", "Balken", "Kreis", "Donut"],
+            key=f"{chart_key}_four_type",
+        )
+    try:
+        if "x" in data and "y" in data:
+            df = pd.DataFrame({"x": data["x"], "y": data["y"]})
+            if chart_type == "Säulen":
+                fig = px.bar(df, x="x", y="y", title=title, labels={"x": x_label, "y": y_label})
+            elif chart_type == "Balken":
+                fig = px.bar(df, x="y", y="x", orientation="h", title=title, labels={"y": x_label, "x": y_label})
+            elif chart_type in ("Kreis", "Donut"):
+                hole = 0.4 if chart_type == "Donut" else 0
+                fig = px.pie(df, names="x", values="y", title=title, hole=hole)
+        elif "labels" in data and "values" in data:
+            df = pd.DataFrame({"labels": data["labels"], "values": data["values"]})
+            if chart_type == "Säulen":
+                fig = px.bar(df, x="labels", y="values", title=title, labels={"labels": x_label, "values": y_label})
+            elif chart_type == "Balken":
+                fig = px.bar(df, x="values", y="labels", orientation="h", title=title, labels={"values": y_label, "labels": x_label})
+            else:  # Kreis / Donut
+                hole = 0.4 if chart_type == "Donut" else 0
+                fig = px.pie(df, names="labels", values="values", title=title, hole=hole)
+        else:
+            import plotly.graph_objects as go
+            fig = go.Figure()
+            fig.add_annotation(
+                text="Unbekanntes Datenformat für vier-Typ-Chart",
+                xref="paper", yref="paper", x=0.5, y=0.5, showarrow=False,
+                font=dict(size=14, color="red"),
+            )
+            fig.update_layout(title=title)
+        _apply_shadcn_like_theme(fig)
+        return fig
+    except Exception as e:
+        import plotly.graph_objects as go
+        fig = go.Figure()
+        fig.add_annotation(
+            text=f"Fehler: {e}", xref="paper", yref="paper", x=0.5, y=0.5, showarrow=False
+        )
+        fig.update_layout(title=title)
+        st.error(f"Chart Fehler: {e}")
+        return fig
+
+
 def create_multi_series_2d_chart(
     data: Dict[str, Any],
     title: str,
@@ -1561,13 +1621,13 @@ def create_multi_series_2d_chart(
     with col2:
         chart_type = st.selectbox(
             "Diagrammtyp:",
-            ["Säulen", "Balken", "Strich"],
+            ["Säulen", "Balken", "Strich", "Kreis", "Donut"],
             index=(
                 0
                 if default_chart_type == "Säulen"
                 else (
-                    ["Säulen", "Balken", "Strich"].index(default_chart_type)
-                    if default_chart_type in ["Säulen", "Balken", "Strich"]
+                    ["Säulen", "Balken", "Strich", "Kreis", "Donut"].index(default_chart_type)
+                    if default_chart_type in ["Säulen", "Balken", "Strich", "Kreis", "Donut"]
                     else 0
                 )
             ),
@@ -1639,6 +1699,21 @@ def create_multi_series_2d_chart(
                     title=title,
                     labels={"value": y_label, "variable": "Datenreihe"},
                 )
+            elif chart_type in ("Kreis", "Donut"):
+                # Aggregation: Summe je Datenreihe über alle Kategorien
+                agg_values = {}
+                for col in df.columns[1:]:
+                    agg_values[col] = df[col].sum()
+                pie_df = pd.DataFrame({"Reihe": list(agg_values.keys()), "Wert": list(agg_values.values())})
+                hole = 0.4 if chart_type == "Donut" else 0
+                fig = px.pie(
+                    pie_df,
+                    names="Reihe",
+                    values="Wert",
+                    color_discrete_sequence=colors,
+                    title=title,
+                    hole=hole,
+                )
 
         elif isinstance(data, pd.DataFrame):
             # DataFrame direkt verwenden
@@ -1668,6 +1743,18 @@ def create_multi_series_2d_chart(
                     y=data.columns[1:],
                     color_discrete_sequence=colors,
                     title=title,
+                )
+            elif chart_type in ("Kreis", "Donut"):
+                agg_values = {col: data[col].sum() for col in data.columns[1:]}
+                pie_df = pd.DataFrame({"Reihe": list(agg_values.keys()), "Wert": list(agg_values.values())})
+                hole = 0.4 if chart_type == "Donut" else 0
+                fig = px.pie(
+                    pie_df,
+                    names="Reihe",
+                    values="Wert",
+                    color_discrete_sequence=colors,
+                    title=title,
+                    hole=hole,
                 )
         else:
             # Fallback: Erstelle ein einfaches Fallback-Diagramm
@@ -1892,6 +1979,7 @@ AVAILABLE_CHART_TYPES = {
     "line": "Liniendiagramm",
     "area": "Flächendiagramm",
     "pie": "Kreisdiagramm",
+    "donut": "Donutdiagramm",
 }
 PLOTLY_COLOR_PALETTES = [
     "Plotly",
@@ -2174,8 +2262,80 @@ def _add_chart_controls(
             st.session_state[key_secondary_color] = new_secondary_color
     st.markdown("---")
 
-
 def render_daily_production_switcher(
+    analysis_results: Dict[str, Any],
+    texts: Dict[str, str],
+    viz_settings: Dict[str, Any],
+):
+    """Moderne 2D-Darstellung der Tagesproduktion mit Diagramm- und Farbwahl"""
+    # Daten vorbereiten
+    hours = list(range(24))
+    anlage_kwp_val = analysis_results.get("anlage_kwp", 0.0)
+    if not isinstance(anlage_kwp_val, (int, float)) or anlage_kwp_val <= 0:
+        anlage_kwp_val = 5.0
+
+    # Simulierte Tagesproduktion berechnen
+    power = [
+        round(p, 2)
+        for p in np.maximum(0, np.sin((np.array(hours) - 6) / 12 * np.pi))
+        * anlage_kwp_val
+        * 0.9
+    ]
+
+    df_day = pd.DataFrame({
+        "Stunde": hours,
+        get_text(texts, "pv_power_label_switcher", "PV-Leistung (kW)"): power,
+    })
+
+    chart_type = st.selectbox(
+        get_text(texts, "daily_prod_chart_type_label", "Diagrammtyp"),
+        ["Säulen", "Balken", "Strich", "Kreis", "Donut"],
+        key="daily_prod_chart_type_switcher",
+    )
+
+    title = get_text(
+        texts,
+        "viz_daily_production_title_switcher",
+        "Tagesproduktion (simuliert)",
+    )
+
+    pv_label = get_text(texts, "pv_power_label_switcher", "PV-Leistung (kW)")
+    fig = go.Figure()
+    if chart_type in ("Säulen", "Balken"):
+        if chart_type == "Säulen":
+            fig.add_trace(go.Bar(x=hours, y=power, name=pv_label))
+        else:
+            fig.add_trace(go.Bar(y=hours, x=power, orientation="h", name=pv_label))
+    elif chart_type == "Strich":
+        fig.add_trace(
+            go.Scatter(x=hours, y=power, mode="lines+markers", name=pv_label)
+        )
+    elif chart_type in ("Kreis", "Donut"):
+        total = sum(power) or 1.0
+        shares = [p / total for p in power]
+        hole = 0.4 if chart_type == "Donut" else 0
+        fig = px.pie(
+            names=[f"{h}h" for h in hours],
+            values=shares,
+            hole=hole,
+            title=title,
+        )
+    else:  # Fallback
+        fig.add_trace(go.Bar(x=hours, y=power, name=pv_label))
+
+    if chart_type not in ("Kreis", "Donut"):
+        fig.update_layout(
+            title=title,
+            xaxis_title="Stunde" if chart_type != "Balken" else pv_label,
+            yaxis_title=pv_label if chart_type != "Balken" else "Stunde",
+            template="plotly_white",
+        )
+    _apply_custom_style_to_fig(fig, viz_settings, "daily_production_switcher")
+    with st.expander(title, expanded=False):
+        st.plotly_chart(fig, use_container_width=True, key="analysis_daily_prod_switcher_key_v7_2d")
+    analysis_results["daily_production_switcher_chart_bytes"] = _export_plotly_fig_to_bytes(fig, texts)
+
+def render_tariff_cube_switcher(
     analysis_results: Dict[str, Any],
     texts: Dict[str, str],
     viz_settings: Dict[str, Any],
@@ -2199,11 +2359,12 @@ def render_daily_production_switcher(
     chart_data = {"x": [f"{h}:00" for h in hours], "y": power}
 
     # Universelles 2D-Diagramm erstellen
+    daily_title = get_text(
+        texts, "viz_daily_prod_title_switcher", "Tagesproduktion (simuliert)"
+    )
     fig = create_universal_2d_chart(
         data=chart_data,
-        title=get_text(
-            texts, "viz_daily_prod_title_switcher", "Tagesproduktion (simuliert)"
-        ),
+        title=daily_title,
         chart_key="daily_production",
         x_label="Stunde",
         y_label="Leistung (kWh)",
@@ -2211,12 +2372,11 @@ def render_daily_production_switcher(
     )
 
     if fig:
-        st.plotly_chart(
-            fig, use_container_width=True, key="analysis_daily_prod_switcher_key_v7_2d"
-        )
-        analysis_results["daily_production_switcher_chart_bytes"] = (
-            _export_plotly_fig_to_bytes(fig, texts)
-        )
+        with st.expander(daily_title, expanded=False):
+            st.plotly_chart(
+                fig, use_container_width=True, key="analysis_daily_prod_switcher_key_v7_2d"
+            )
+        analysis_results["daily_production_switcher_chart_bytes"] = _export_plotly_fig_to_bytes(fig, texts)
     else:
         st.error("Fehler beim Erstellen des Tagesproduktions-Diagramms")
 
@@ -2251,11 +2411,12 @@ def render_weekly_production_switcher(
     chart_data = {"labels": days, "values": weekly_production}
 
     # Universelles 2D-Diagramm erstellen
+    weekly_title = get_text(
+        texts, "viz_weekly_prod_title_switcher", "Wochenproduktion (simuliert)"
+    )
     fig = create_universal_2d_chart(
         data=chart_data,
-        title=get_text(
-            texts, "viz_weekly_prod_title_switcher", "Wochenproduktion (simuliert)"
-        ),
+        title=weekly_title,
         chart_key="weekly_production",
         x_label="Wochentag",
         y_label="Produktion (kWh)",
@@ -2263,12 +2424,11 @@ def render_weekly_production_switcher(
     )
 
     if fig:
-        st.plotly_chart(
-            fig, use_container_width=True, key="analysis_weekly_prod_switcher_key_v7_2d"
-        )
-        analysis_results["weekly_production_switcher_chart_bytes"] = (
-            _export_plotly_fig_to_bytes(fig, texts)
-        )
+        with st.expander(weekly_title, expanded=False):
+            st.plotly_chart(
+                fig, use_container_width=True, key="analysis_weekly_prod_switcher_key_v7_2d"
+            )
+        analysis_results["weekly_production_switcher_chart_bytes"] = _export_plotly_fig_to_bytes(fig, texts)
     else:
         st.error("Fehler beim Erstellen des Wochenproduktions-Diagramms")
 
@@ -2349,13 +2509,14 @@ def render_yearly_production_switcher(
     chart_data = {"labels": month_labels, "values": production_data}
 
     # Universelles 2D-Diagramm erstellen
+    yearly_title = get_text(
+        texts,
+        "viz_yearly_prod_bar3d_title_switcher",
+        "Jährliche PV-Produktion nach Monaten",
+    )
     fig = create_universal_2d_chart(
         data=chart_data,
-        title=get_text(
-            texts,
-            "viz_yearly_prod_bar3d_title_switcher",
-            "Jährliche PV-Produktion nach Monaten",
-        ),
+        title=yearly_title,
         chart_key="yearly_production",
         x_label="Monat",
         y_label="Produktion (kWh)",
@@ -2363,12 +2524,11 @@ def render_yearly_production_switcher(
     )
 
     if fig:
-        st.plotly_chart(
-            fig, use_container_width=True, key="analysis_yearly_prod_switcher_key_v7_2d"
-        )
-        analysis_results["yearly_production_switcher_chart_bytes"] = (
-            _export_plotly_fig_to_bytes(fig, texts)
-        )
+        with st.expander(yearly_title, expanded=False):
+            st.plotly_chart(
+                fig, use_container_width=True, key="analysis_yearly_prod_switcher_key_v7_2d"
+            )
+        analysis_results["yearly_production_switcher_chart_bytes"] = _export_plotly_fig_to_bytes(fig, texts)
     else:
         st.error("Fehler beim Erstellen des Jahresproduktions-Diagramms")
 
@@ -2424,13 +2584,14 @@ def render_project_roi_matrix_switcher(
     chart_data = {"labels": scenarios, "values": roi_values}
 
     # Universelles 2D-Diagramm erstellen
+    proj_title = get_text(
+        texts,
+        "viz_project_roi_matrix_title_switcher",
+        "Projektrendite-Szenarien (20 Jahre)",
+    )
     fig = create_universal_2d_chart(
         data=chart_data,
-        title=get_text(
-            texts,
-            "viz_project_roi_matrix_title_switcher",
-            "Projektrendite-Szenarien (20 Jahre)",
-        ),
+        title=proj_title,
         chart_key="project_roi_matrix",
         x_label="Szenario",
         y_label="ROI (%)",
@@ -2438,14 +2599,13 @@ def render_project_roi_matrix_switcher(
     )
 
     if fig:
-        st.plotly_chart(
-            fig,
-            use_container_width=True,
-            key="analysis_project_roi_matrix_switcher_key_v7_2d",
-        )
-        analysis_results["project_roi_matrix_switcher_chart_bytes"] = (
-            _export_plotly_fig_to_bytes(fig, texts)
-        )
+        with st.expander(proj_title, expanded=False):
+            st.plotly_chart(
+                fig,
+                use_container_width=True,
+                key="analysis_project_roi_matrix_switcher_key_v7_2d",
+            )
+        analysis_results["project_roi_matrix_switcher_chart_bytes"] = _export_plotly_fig_to_bytes(fig, texts)
     else:
         st.error("Fehler beim Erstellen des ROI-Diagramms")
 
@@ -2541,13 +2701,14 @@ def render_feed_in_revenue_switcher(
     chart_data = {"labels": month_labels, "values": einnahmen}
 
     # Universelles 2D-Diagramm erstellen
+    feedin_title = get_text(
+        texts,
+        "viz_feed_in_revenue_title_switcher",
+        f"Monatliche Einspeisevergütung (Tarif: {feed_in_tariff_eur_kwh*100:.2f} ct/kWh)",
+    )
     fig = create_universal_2d_chart(
         data=chart_data,
-        title=get_text(
-            texts,
-            "viz_feed_in_revenue_title_switcher",
-            f"Monatliche Einspeisevergütung (Tarif: {feed_in_tariff_eur_kwh*100:.2f} ct/kWh)",
-        ),
+        title=feedin_title,
         chart_key="feed_in_revenue",
         x_label="Monat",
         y_label="Einnahmen (€)",
@@ -2555,14 +2716,13 @@ def render_feed_in_revenue_switcher(
     )
 
     if fig:
-        st.plotly_chart(
-            fig,
-            use_container_width=True,
-            key="analysis_feed_in_revenue_switcher_key_v7_2d",
-        )
-        analysis_results["feed_in_revenue_switcher_chart_bytes"] = (
-            _export_plotly_fig_to_bytes(fig, texts)
-        )
+        with st.expander(feedin_title, expanded=False):
+            st.plotly_chart(
+                fig,
+                use_container_width=True,
+                key="analysis_feed_in_revenue_switcher_key_v7_2d",
+            )
+        analysis_results["feed_in_revenue_switcher_chart_bytes"] = _export_plotly_fig_to_bytes(fig, texts)
     else:
         st.error("Fehler beim Erstellen des Einspeisevergütungs-Diagramms")
 
@@ -2682,22 +2842,23 @@ def render_production_vs_consumption_switcher(
     )
 
     # Diagramm-Konfiguration
-    col1, col2, col3 = st.columns([2, 1, 1])
+    with st.expander("Verbrauch vs. Produktion (Jahr 1)", expanded=False):
+        col1, col2, col3 = st.columns([2, 1, 1])
 
-    with col1:
-        st.markdown("### Verbrauch vs. Produktion (Jahr 1)")
+        with col1:
+            st.markdown("### Verbrauch vs. Produktion (Jahr 1)")
 
-    with col2:
-        chart_type = st.selectbox(
-            "Diagrammtyp:", ["Säulen", "Strich", "Balken"], key="prod_vs_cons_type"
-        )
+        with col2:
+            chart_type = st.selectbox(
+                "Diagrammtyp:", ["Säulen", "Strich", "Balken"], key="prod_vs_cons_type"
+            )
 
-    with col3:
-        color_scheme = st.selectbox(
-            "Farbschema:",
-            ["Standard", "Grün-Blau", "Rot-Grün", "Warm", "Kalt"],
-            key="prod_vs_cons_colors",
-        )
+        with col3:
+            color_scheme = st.selectbox(
+                "Farbschema:",
+                ["Standard", "Grün-Blau", "Rot-Grün", "Warm", "Kalt"],
+                key="prod_vs_cons_colors",
+            )
 
     # Farbpaletten für Vergleichsdiagramme
     color_palettes = {
@@ -2749,56 +2910,62 @@ def render_production_vs_consumption_switcher(
                 line=dict(color=colors[1]),
             )
         )
-    elif chart_type == "Balken":
-        fig = go.Figure()
-        fig.add_trace(
-            go.Bar(
-                y=month_labels,
-                x=verbrauch,
-                name="Verbrauch (kWh)",
-                orientation="h",
-                marker_color=colors[0],
+        if chart_type == "Säulen":
+            fig = px.bar(
+                df_comparison,
+                x="Monat",
+                y=["Verbrauch (kWh)", "Produktion (kWh)"],
+                barmode="group",
+                title="Verbrauch vs. Produktion (Jahr 1)",
+                color_discrete_sequence=colors,
             )
-        )
-        fig.add_trace(
-            go.Bar(
-                y=month_labels,
-                x=produktion,
-                name="Produktion (kWh)",
-                orientation="h",
-                marker_color=colors[1],
+        elif chart_type == "Strich":
+            fig = px.line(
+                df_comparison,
+                x="Monat",
+                y=["Verbrauch (kWh)", "Produktion (kWh)"],
+                title="Verbrauch vs. Produktion (Jahr 1)",
+                color_discrete_sequence=colors,
             )
+        else:  # Balken horizontal
+            fig = px.bar(
+                df_comparison,
+                y="Monat",
+                x=["Verbrauch (kWh)", "Produktion (kWh)"],
+                barmode="group",
+                orientation="h",
+                title="Verbrauch vs. Produktion (Jahr 1)",
+                color_discrete_sequence=colors,
+            )
+
+        fig.update_layout(
+            xaxis_title="Monat",
+            yaxis_title="Energie (kWh)",
+            legend_title="Kategorie",
+            template="plotly_white",
         )
+        _apply_custom_style_to_fig(fig, viz_settings, "prod_vs_cons_switcher")
 
-    fig.update_layout(
-        title="Monatlicher Verbrauch vs. Produktion",
-        xaxis_title="Monat" if chart_type != "Balken" else "kWh",
-        yaxis_title="kWh" if chart_type != "Balken" else "Monat",
-        plot_bgcolor="rgba(240, 242, 246, 0.8)",
-        paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(size=12),
-        height=400,
-        margin=dict(l=50, r=50, t=80, b=50),
-        barmode="group" if chart_type in ["Säulen", "Balken"] else None,
-    )
-
-    st.plotly_chart(
-        fig, use_container_width=True, key="analysis_prod_vs_cons_switcher_key_v7_2d"
-    )
-    analysis_results["prod_vs_cons_switcher_chart_bytes"] = _export_plotly_fig_to_bytes(
-        fig, texts
-    )
-
-
+        st.plotly_chart(
+            fig, use_container_width=True, key="analysis_prod_vs_cons_switcher_key_v7_2d"
+        )
+        analysis_results["prod_vs_cons_switcher_chart_bytes"] = _export_plotly_fig_to_bytes(
+            fig, texts
+        )
+        
 def render_tariff_cube_switcher(
     analysis_results: Dict[str, Any],
     texts: Dict[str, str],
     viz_settings: Dict[str, Any],
 ):
-    st.subheader(
-        get_text(
-            texts, "viz_tariff_cube_switcher", "Tarifvergleich - Anbieter (2D Diagramm)"
-        )
+    """Tarifvergleich verschiedener Anbieter (Jahreskosten) als 2D Chart.
+
+    Zeigt aktuellen Tarif, berechnete PV-Gestehungskosten (LCOE) sowie zwei
+    alternative Szenarien. Ergebnisse werden in analysis_results als Bytes
+    für PDF-Export abgelegt.
+    """
+    title = get_text(
+        texts, "viz_tariff_cube_switcher", "Tarifvergleich - Anbieter (2D Diagramm)"
     )
 
     # Daten vorbereiten
@@ -2827,6 +2994,32 @@ def render_tariff_cube_switcher(
     ]
     gesamt = [g + a * jahresverbrauch for g, a in zip(grundgebuehr, arbeitspreis)]
 
+    chart_data = {
+        "categories": anbieter,
+        "series": [
+            {
+                "name": get_text(texts, "annual_costs_label_switcher", "Jahreskosten (€)"),
+                "data": gesamt,
+            }
+        ],
+    }
+
+    fig = create_multi_series_2d_chart(
+        chart_data,
+        title=title,
+        x_label=get_text(texts, "provider_label_switcher", "Anbieter"),
+        y_label=get_text(texts, "costs_label_switcher", "Kosten (€)"),
+        chart_key="analysis_tariff_cube_switcher_key_v6_final",
+    )
+    _apply_custom_style_to_fig(fig, viz_settings, "tariff_cube_switcher")
+    with st.expander(title, expanded=False):
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+            key="analysis_tariff_cube_switcher_plot_key_v6_final",
+        )
+    analysis_results["tariff_cube_switcher_chart_bytes"] = _export_plotly_fig_to_bytes(fig, texts)
+
     # Chart-Daten für universelle Funktion vorbereiten
     chart_data = {
         "x": anbieter,
@@ -2853,7 +3046,8 @@ def render_tariff_cube_switcher(
 
     if fig:
         _apply_custom_style_to_fig(fig, viz_settings, "tariff_cube_switcher")
-        st.plotly_chart(fig, use_container_width=True, key="analysis_tariff_cube_switcher_plot")
+        with st.expander(title, expanded=False):
+            st.plotly_chart(fig, use_container_width=True, key="analysis_tariff_cube_switcher_plot")
         analysis_results["tariff_cube_switcher_chart_bytes"] = _export_plotly_fig_to_bytes(fig, texts)
     else:
         analysis_results["tariff_cube_switcher_chart_bytes"] = None
@@ -2864,12 +3058,10 @@ def render_co2_savings_value_switcher(
     texts: Dict[str, str],
     viz_settings: Dict[str, Any],
 ):
-    st.subheader(
-        get_text(
-            texts,
-            "viz_co2_savings_value_switcher",
-            "CO₂-Ersparnis vs. Monetärer Wert (Simuliert)",
-        )
+    co2_title = get_text(
+        texts,
+        "viz_co2_savings_value_switcher",
+        "CO₂-Ersparnis vs. Monetärer Wert (Simuliert)",
     )
 
     # Moderne 2D-Visualisierung statt 3D-Kinderzeichnung
@@ -2964,9 +3156,13 @@ def render_co2_savings_value_switcher(
     # 
 
     if fig:
-        analysis_results["co2_savings_value_switcher_chart_bytes"] = (
-            _export_plotly_fig_to_bytes(fig, texts)
-        )
+        with st.expander(co2_title, expanded=False):
+            st.plotly_chart(
+                fig,
+                use_container_width=True,
+                key="analysis_co2_savings_value_switcher_plot",
+            )
+        analysis_results["co2_savings_value_switcher_chart_bytes"] = _export_plotly_fig_to_bytes(fig, texts)
     else:
         analysis_results["co2_savings_value_switcher_chart_bytes"] = None
 
@@ -3208,11 +3404,12 @@ def render_extended_calculations_dashboard(
             showlegend=False,
         )
 
-        st.plotly_chart(
-            fig,
-            use_container_width=True,
-            key="eigenverbrauch_optimization_chart_unique",
-        )
+        with st.expander("Eigenverbrauchsoptimierung", expanded=False):
+            st.plotly_chart(
+                fig,
+                use_container_width=True,
+                key="eigenverbrauch_optimization_chart_unique",
+            )
 
     with tabs[1]:  # Netzanalyse
         st.subheader(" Netzanalyse")
@@ -3344,17 +3541,29 @@ def render_extended_calculations_dashboard(
         col1, col2, col3 = st.columns(3)
 
         with col1:
+            # Guard gegen Division durch 0 (system_kwp kann bei fehlerhaften / unvollständigen Eingaben 0 sein)
+            _system_kwp = system_data.get("system_kwp") or 0
+            delta_10 = (
+                f"{((deg_results['power_year_10_kwp'] / _system_kwp) - 1) * 100:.2f}%"
+                if _system_kwp > 0
+                else "n/a"
+            )
             st.metric(
                 "Leistung nach 10 Jahren",
                 f"{deg_results['power_year_10_kwp']:.2f} kWp",
-                f"{(deg_results['power_year_10_kwp']/system_data['system_kwp']-1)*100:.2f}%",
+                delta_10,
             )
 
         with col2:
+            delta_20 = (
+                f"{((deg_results['power_year_20_kwp'] / _system_kwp) - 1) * 100:.2f}%"
+                if _system_kwp > 0
+                else "n/a"
+            )
             st.metric(
                 "Leistung nach 20 Jahren",
                 f"{deg_results['power_year_20_kwp']:.2f} kWp",
-                f"{(deg_results['power_year_20_kwp']/system_data['system_kwp']-1)*100:.2f}%",
+                delta_20,
             )
 
         with col3:
@@ -3658,11 +3867,12 @@ def render_co2_savings_value_switcher(
     )
 
     if fig:
-        st.plotly_chart(
-            fig,
-            use_container_width=True,
-            key="analysis_co2_savings_value_switcher_key_v6_final",
-        )
+        with st.expander(title, expanded=False):
+            st.plotly_chart(
+                fig,
+                use_container_width=True,
+                key="analysis_co2_savings_value_switcher_key_v6_final",
+            )
         analysis_results["co2_savings_value_switcher_chart_bytes"] = (
             _export_plotly_fig_to_bytes(fig, texts)
         )
@@ -3799,7 +4009,8 @@ def render_investment_value_switcher(
         chart_key="investment_value_modern_2d_chart",
     )
     _apply_custom_style_to_fig(fig, viz_settings, "investment_value_switcher")
-    st.plotly_chart(fig, use_container_width=True, key="analysis_investment_value_switcher_plot")
+    with st.expander(title, expanded=False):
+        st.plotly_chart(fig, use_container_width=True, key="analysis_investment_value_switcher_plot")
     analysis_results["investment_value_switcher_chart_bytes"] = _export_plotly_fig_to_bytes(fig, texts)
 
 
@@ -3900,7 +4111,8 @@ def render_storage_effect_switcher(
         chart_key="storage_effect_modern_2d_chart",
     )
     _apply_custom_style_to_fig(fig, viz_settings, "storage_effect_switcher")
-    st.plotly_chart(fig, use_container_width=True, key="analysis_storage_effect_switcher_plot")
+    with st.expander(title, expanded=False):
+        st.plotly_chart(fig, use_container_width=True, key="analysis_storage_effect_switcher_plot")
     analysis_results["storage_effect_switcher_chart_bytes"] = _export_plotly_fig_to_bytes(fig, texts)
 
 
@@ -4004,14 +4216,13 @@ def render_selfuse_stack_switcher(
     )
 
     _apply_custom_style_to_fig(fig, viz_settings, "selfuse_stack_switcher")
-    st.plotly_chart(
-        fig,
-        use_container_width=True,
-        key="analysis_selfuse_stack_switcher_key_v6_final",
-    )
-    analysis_results["selfuse_stack_switcher_chart_bytes"] = (
-        _export_plotly_fig_to_bytes(fig, texts)
-    )
+    with st.expander(title, expanded=False):
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+            key="analysis_selfuse_stack_switcher_key_v6_final",
+        )
+    analysis_results["selfuse_stack_switcher_chart_bytes"] = _export_plotly_fig_to_bytes(fig, texts)
 
 
 def render_cost_growth_switcher(
@@ -4019,12 +4230,10 @@ def render_cost_growth_switcher(
     texts: Dict[str, str],
     viz_settings: Dict[str, Any],
 ):
-    st.subheader(
-        get_text(
-            texts,
-            "viz_cost_growth_subheader_switcher",
-            "Stromkostensteigerung - 2D Szenarien",
-        )
+    cost_growth_subheader = get_text(
+        texts,
+        "viz_cost_growth_subheader_switcher",
+        "Stromkostensteigerung - 2D Szenarien",
     )
     years_effective = int(analysis_results.get("simulation_period_years_effective", 0))
     if years_effective <= 0:
@@ -4081,9 +4290,12 @@ def render_cost_growth_switcher(
     )
 
     _apply_custom_style_to_fig(fig, viz_settings, "cost_growth_switcher")
-    st.plotly_chart(
-        fig, use_container_width=True, key="analysis_cost_growth_switcher_key_v6_final"
-    )
+    with st.expander(cost_growth_subheader, expanded=False):
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+            key="analysis_cost_growth_switcher_key_v6_final",
+        )
     analysis_results["cost_growth_switcher_chart_bytes"] = _export_plotly_fig_to_bytes(
         fig, texts
     )
@@ -4094,12 +4306,10 @@ def render_selfuse_ratio_switcher(
     texts: Dict[str, str],
     viz_settings: Dict[str, Any],
 ):
-    st.subheader(
-        get_text(
-            texts,
-            "viz_selfuse_ratio_subheader_switcher",
-            "Eigenverbrauchsgrad – Monatliche Bubble View (Jahr 1)",
-        )
+    selfuse_ratio_subheader = get_text(
+        texts,
+        "viz_selfuse_ratio_subheader_switcher",
+        "Eigenverbrauchsgrad – Monatliche Bubble View (Jahr 1)",
     )
     month_labels = get_text(
         texts,
@@ -4184,11 +4394,12 @@ def render_selfuse_ratio_switcher(
         chart_key="selfuse_ratio_modern_2d_chart",
     )
     _apply_custom_style_to_fig(fig, viz_settings, "selfuse_ratio_switcher")
-    st.plotly_chart(
-        fig,
-        use_container_width=True,
-        key="analysis_selfuse_ratio_switcher_key_v6_final",
-    )
+    with st.expander(selfuse_ratio_subheader, expanded=False):
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+            key="analysis_selfuse_ratio_switcher_key_v6_final",
+        )
     analysis_results["selfuse_ratio_switcher_chart_bytes"] = (
         _export_plotly_fig_to_bytes(fig, texts)
     )
@@ -4257,11 +4468,12 @@ def render_roi_comparison_switcher(
         chart_key="roi_comparison_modern_2d_chart",
     )
 
-    st.plotly_chart(
-        fig,
-        use_container_width=True,
-        key="analysis_roi_comparison_switcher_key_v6_final",
-    )
+    with st.expander(title, expanded=False):
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+            key="analysis_roi_comparison_switcher_key_v6_final",
+        )
     analysis_results["roi_comparison_switcher_chart_bytes"] = (
         _export_plotly_fig_to_bytes(fig, texts)
     )
@@ -4272,12 +4484,10 @@ def render_scenario_comparison_switcher(
     texts: Dict[str, str],
     viz_settings: Dict[str, Any],
 ):
-    st.subheader(
-        get_text(
-            texts,
-            "viz_scenario_comp_subheader_switcher",
-            "Szenarienvergleich – Invest/Ertrag/Bonus (Illustrativ)",
-        )
+    scenario_comp_subheader = get_text(
+        texts,
+        "viz_scenario_comp_subheader_switcher",
+        "Szenarienvergleich – Invest/Ertrag/Bonus (Illustrativ)",
     )
     base_invest_raw = analysis_results.get("total_investment_netto")
     benefits_raw = analysis_results.get("annual_benefits_sim", [])
@@ -4341,11 +4551,12 @@ def render_scenario_comparison_switcher(
     )
 
     _apply_custom_style_to_fig(fig, viz_settings, "scenario_comparison_switcher")
-    st.plotly_chart(
-        fig,
-        use_container_width=True,
-        key="analysis_scenario_comp_switcher_key_v6_final",
-    )
+    with st.expander(scenario_comp_subheader, expanded=False):
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+            key="analysis_scenario_comp_switcher_key_v6_final",
+        )
     analysis_results["scenario_comparison_switcher_chart_bytes"] = (
         _export_plotly_fig_to_bytes(fig, texts)
     )
@@ -4356,12 +4567,10 @@ def render_tariff_comparison_switcher(
     texts: Dict[str, str],
     viz_settings: Dict[str, Any],
 ):
-    st.subheader(
-        get_text(
-            texts,
-            "viz_tariff_comp_subheader_switcher",
-            "Vorher/Nachher – Monatliche Stromkosten (Jahr 1)",
-        )
+    tariff_comp_subheader = get_text(
+        texts,
+        "viz_tariff_comp_subheader_switcher",
+        "Vorher/Nachher – Monatliche Stromkosten (Jahr 1)",
     )
     month_labels = get_text(
         texts,
@@ -4452,9 +4661,12 @@ def render_tariff_comparison_switcher(
     )
 
     _apply_custom_style_to_fig(fig, viz_settings, "tariff_comparison_switcher")
-    st.plotly_chart(
-        fig, use_container_width=True, key="analysis_tariff_comp_switcher_key_v6_final"
-    )
+    with st.expander(tariff_comp_subheader, expanded=False):
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+            key="analysis_tariff_comp_switcher_key_v6_final",
+        )
     analysis_results["tariff_comparison_switcher_chart_bytes"] = (
         _export_plotly_fig_to_bytes(fig, texts)
     )
@@ -4465,12 +4677,10 @@ def render_income_projection_switcher(
     texts: Dict[str, str],
     viz_settings: Dict[str, Any],
 ):
-    st.subheader(
-        get_text(
-            texts,
-            "viz_income_proj_subheader_switcher",
-            " Einnahmen/Ersparnisprognose – Dynamischer Verlauf",
-        )
+    income_proj_subheader = get_text(
+        texts,
+        "viz_income_proj_subheader_switcher",
+        " Einnahmen/Ersparnisprognose – Dynamischer Verlauf",
     )
     years_effective = int(analysis_results.get("simulation_period_years_effective", 0))
     if years_effective <= 0:
@@ -4521,9 +4731,12 @@ def render_income_projection_switcher(
         chart_key="income_projection_modern_2d_chart",
     )
     _apply_custom_style_to_fig(fig, viz_settings, "income_projection_switcher")
-    st.plotly_chart(
-        fig, use_container_width=True, key="analysis_income_proj_switcher_key_v6_final"
-    )
+    with st.expander(income_proj_subheader, expanded=False):
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+            key="analysis_income_proj_switcher_key_v6_final",
+        )
     analysis_results["income_projection_switcher_chart_bytes"] = (
         _export_plotly_fig_to_bytes(fig, texts)
     )
@@ -4968,7 +5181,7 @@ def _render_consumption_coverage_pie(
             "Eigenverbrauch & Netzbezug (Jahr 1)",
         )
     )
-    _add_chart_controls(chart_key_prefix, texts_local, "pie", ["pie"], viz_settings)
+    # Eigene Vier-Typ-Auswahl (Säulen, Balken, Kreis, Donut)
 
     total_cons_raw = analysis_results_local.get("total_consumption_kwh_yr")
     self_supply_val_raw = analysis_results_local.get("self_supply_rate_percent")
@@ -5044,39 +5257,14 @@ def _render_consumption_coverage_pie(
         dynamic_color_list = [default_color_1, default_color_2]
 
     if total_cons > 0:
-        df_pie_data = {
-            "Kategorie": [
-                get_text(texts_local, "self_supply_rate_pie_label", "Eigenversorgung"),
-                get_text(texts_local, "grid_consumption_rate_pie_label", "Netzbezug"),
-            ],
-            "Anteil (%)": [self_supply_float, grid_cons_float],
-        }
-        df_pie = pd.DataFrame(df_pie_data)
-        df_pie = df_pie[df_pie["Anteil (%)"] >= 0.01]
-
-        if not df_pie.empty:
-            fig = px.pie(
-                df_pie,
-                values="Anteil (%)",
-                names="Kategorie",
-                title=get_text(
-                    texts_local,
-                    "pie_chart_consumption_coverage_title",
-                    "Deckung Gesamtverbrauch",
-                ),
-                hole=0.3,
-                color_discrete_sequence=dynamic_color_list,
-            )
-            _apply_custom_style_to_fig(fig, viz_settings, "consumption_coverage_chart")
-            st.plotly_chart(
-                fig,
-                use_container_width=True,
-                key=f"{chart_key_prefix}_final_pie_chart_key_v7_corrected",
-            )
-            analysis_results_local[f"{chart_key_prefix}_chart_bytes"] = (
-                _export_plotly_fig_to_bytes(fig, texts_local)
-            )
-        else:
+        labels = [
+            get_text(texts_local, "self_supply_rate_pie_label", "Eigenversorgung"),
+            get_text(texts_local, "grid_consumption_rate_pie_label", "Netzbezug"),
+        ]
+        values = [self_supply_float, grid_cons_float]
+        # Filter raus sehr kleine Anteile
+        filtered = [(l, v) for l, v in zip(labels, values) if v >= 0.01]
+        if not filtered:
             st.info(
                 get_text(
                     texts_local,
@@ -5085,6 +5273,28 @@ def _render_consumption_coverage_pie(
                 )
             )
             analysis_results_local[f"{chart_key_prefix}_chart_bytes"] = None
+            return
+        labels, values = zip(*filtered)
+        chart_data = {"labels": list(labels), "values": list(values)}
+        title = get_text(
+            texts_local,
+            "pie_chart_consumption_coverage_title",
+            "Deckung Gesamtverbrauch",
+        )
+        fig = create_four_type_chart(
+            chart_data,
+            title=title,
+            chart_key=f"{chart_key_prefix}_four",
+            x_label="Kategorie",
+            y_label="Anteil (%)",
+        )
+        _apply_custom_style_to_fig(fig, viz_settings, "consumption_coverage_chart")
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+            key=f"{chart_key_prefix}_four_type_chart_final",
+        )
+        analysis_results_local[f"{chart_key_prefix}_chart_bytes"] = _export_plotly_fig_to_bytes(fig, texts_local)
     else:
         st.info(
             get_text(
@@ -5105,7 +5315,7 @@ def _render_pv_usage_pie(
     st.subheader(
         get_text(texts_local, "pv_usage_header", "Nutzung des PV-Stroms (Jahr 1)")
     )
-    _add_chart_controls(chart_key_prefix, texts_local, "pie", ["pie"], viz_settings)
+    # Vier-Typ-Auswahl statt nur Pie
 
     direct_cons_prod_perc_raw = analysis_results_local.get(
         "direktverbrauch_anteil_pv_produktion_pct"
@@ -5199,40 +5409,14 @@ def _render_pv_usage_pie(
 
     if annual_pv_prod_kwh_val > 0:
         feed_in_prod_perc = max(0.0, 100.0 - direct_cons_float - storage_cons_float)
-        pie_labels_pv = [
+        labels = [
             get_text(texts_local, "direct_consumption_pie_label", "Direktverbrauch"),
             get_text(texts_local, "storage_usage_pie_label", "Speichernutzung"),
             get_text(texts_local, "feed_in_pie_label", "Einspeisung"),
         ]
-        pie_values_pv = [direct_cons_float, storage_cons_float, feed_in_prod_perc]
-        df_pie_data = {
-            "Nutzungsart": pie_labels_pv,
-            "Anteil an PV-Produktion (%)": pie_values_pv,
-        }
-        df_pie_pv = pd.DataFrame(df_pie_data)
-        df_pie_pv = df_pie_pv[df_pie_pv["Anteil an PV-Produktion (%)"] >= 0.01]
-
-        if not df_pie_pv.empty:
-            fig = px.pie(
-                df_pie_pv,
-                values="Anteil an PV-Produktion (%)",
-                names="Nutzungsart",
-                title=get_text(
-                    texts_local, "pie_chart_pv_usage_title", "Aufteilung PV-Produktion"
-                ),
-                hole=0.3,
-                color_discrete_sequence=dynamic_color_list,
-            )
-            _apply_custom_style_to_fig(fig, viz_settings, "pv_usage_chart")
-            st.plotly_chart(
-                fig,
-                use_container_width=True,
-                key=f"{chart_key_prefix}_final_pie_chart_key_v7_corrected",
-            )
-            analysis_results_local[f"{chart_key_prefix}_chart_bytes"] = (
-                _export_plotly_fig_to_bytes(fig, texts_local)
-            )
-        else:
+        values = [direct_cons_float, storage_cons_float, feed_in_prod_perc]
+        filtered = [(l, v) for l, v in zip(labels, values) if v >= 0.01]
+        if not filtered:
             st.info(
                 get_text(
                     texts_local,
@@ -5241,6 +5425,26 @@ def _render_pv_usage_pie(
                 )
             )
             analysis_results_local[f"{chart_key_prefix}_chart_bytes"] = None
+            return
+        labels, values = zip(*filtered)
+        chart_data = {"labels": list(labels), "values": list(values)}
+        title = get_text(
+            texts_local, "pie_chart_pv_usage_title", "Aufteilung PV-Produktion"
+        )
+        fig = create_four_type_chart(
+            chart_data,
+            title=title,
+            chart_key=f"{chart_key_prefix}_four",
+            x_label="Nutzungsart",
+            y_label="Anteil (%)",
+        )
+        _apply_custom_style_to_fig(fig, viz_settings, "pv_usage_chart")
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+            key=f"{chart_key_prefix}_four_type_chart_final",
+        )
+        analysis_results_local[f"{chart_key_prefix}_chart_bytes"] = _export_plotly_fig_to_bytes(fig, texts_local)
     else:
         st.info(
             get_text(
@@ -7210,11 +7414,12 @@ def render_analysis(
             # Modernes Design anwenden!
             if CHART_MODERNIZER_AVAILABLE:
                 fig_monthly_comp = apply_modern_style_to_figure(fig_monthly_comp, "Monatliche Energie-Bilanz")
-            st.plotly_chart(
-                fig_monthly_comp,
-                use_container_width=True,
-                key="analysis_monthly_comp_chart_final_v8_corrected",
-            )
+            with st.expander("Monatlicher Vergleich: Produktion vs. Verbrauch (Jahr 1)", expanded=False):
+                st.plotly_chart(
+                    fig_monthly_comp,
+                    use_container_width=True,
+                    key="analysis_monthly_comp_chart_final_v8_corrected",
+                )
             results_for_display["monthly_prod_cons_chart_bytes"] = (
                 _export_plotly_fig_to_bytes(fig_monthly_comp, texts)
             )
@@ -7241,11 +7446,12 @@ def render_analysis(
             # Modernes Design anwenden!
             if CHART_MODERNIZER_AVAILABLE:
                 fig_cost_projection = apply_modern_style_to_figure(fig_cost_projection, "Stromkostenentwicklung über Zeit")
-            st.plotly_chart(
-                fig_cost_projection,
-                use_container_width=True,
-                key="analysis_cost_proj_chart_final_v8_corrected",
-            )
+            with st.expander("Stromkosten-Hochrechnung ohne PV", expanded=False):
+                st.plotly_chart(
+                    fig_cost_projection,
+                    use_container_width=True,
+                    key="analysis_cost_proj_chart_final_v8_corrected",
+                )
             results_for_display["cost_projection_chart_bytes"] = (
                 _export_plotly_fig_to_bytes(fig_cost_projection, texts)
             )
@@ -7331,11 +7537,12 @@ def render_analysis(
         if fig_cum_cf:
             if CHART_MODERNIZER_AVAILABLE:
                 fig_cum_cf = apply_modern_style_to_figure(fig_cum_cf, "Kumulativer Cashflow")
-            st.plotly_chart(
-                fig_cum_cf,
-                use_container_width=True,
-                key="analysis_cum_cashflow_chart_final_v8_corrected",
-            )
+            with st.expander("Kumulierter Cashflow über die Laufzeit (2D)", expanded=False):
+                st.plotly_chart(
+                    fig_cum_cf,
+                    use_container_width=True,
+                    key="analysis_cum_cashflow_chart_final_v8_corrected",
+                )
             results_for_display["cumulative_cashflow_chart_bytes"] = (
                 _export_plotly_fig_to_bytes(fig_cum_cf, texts)
             )
@@ -8836,14 +9043,14 @@ def render_advanced_financial_analysis(results: Dict[str, Any], texts: Dict[str,
         ))
         
         fig.update_layout(
-            title='Cashflow-Entwicklung über 20 Jahre',
+                title='Cashflow-Entwicklung über 20 Jahre',
             xaxis_title='Jahr',
             yaxis_title='Jährlicher Cashflow (€)',
             yaxis2=dict(title='Kumulativer Cashflow (€)', side='right', overlaying='y'),
             height=400
         )
-        
-        st.plotly_chart(fig, use_container_width=True, key="advanced_cashflow")
+        with st.expander('Cashflow-Entwicklung über 20 Jahre', expanded=False):
+            st.plotly_chart(fig, use_container_width=True, key="advanced_cashflow")
     
     else:
         st.info(" Keine ausreichenden Finanzdaten für erweiterte Analyse verfügbar.")
