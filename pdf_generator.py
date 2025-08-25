@@ -335,7 +335,12 @@ def generate_main_template_pdf_bytes(
     coords_dir = Path(base_dir) / "coords"
     bg_dir = Path(base_dir) / "pdf_templates_static" / "notext"
 
+    debug_templates = os.environ.get("DING_TEMPLATE_DEBUG", "0").lower() in {"1","true","yes","on"}
+    if debug_templates:
+        print("[TEMPLATE] build_dynamic_data start")
     dyn_data = build_dynamic_data(project_data, analysis_results, company_info)
+    if debug_templates:
+        print(f"[TEMPLATE] build_dynamic_data done keys={len(dyn_data)}")
     # Haupt-PDF mit korrekter "Seite x von XX"-Nummerierung, aber ohne Zusatzseiten anhängen
     try:
         total_pages = 6
@@ -346,11 +351,22 @@ def generate_main_template_pdf_bytes(
                 total_pages = 6 + len(PdfReader(_io.BytesIO(additional_pdf)).pages)
             except Exception:
                 total_pages = 6
+        if debug_templates:
+            print(f"[TEMPLATE] generate_overlay call total_pages={total_pages}")
         overlay_bytes = generate_overlay(coords_dir, dyn_data, total_pages=total_pages)
+        if debug_templates:
+            print(f"[TEMPLATE] overlay size={len(overlay_bytes)} bytes")
         fused = merge_with_background(overlay_bytes, bg_dir)
+        if debug_templates:
+            print(f"[TEMPLATE] fused main6 size={len(fused)} bytes")
         return fused
     except Exception as e_gen:
-        print(f"Fehler bei Overlay/Merge der 6-Seiten-PDF: {e_gen}")
+        import traceback, sys
+        print(f"[TEMPLATE] Fehler bei Overlay/Merge der 6-Seiten-PDF: {e_gen}")
+        try:
+            traceback.print_exc()
+        except Exception:
+            print("[TEMPLATE] (Traceback konnte nicht ausgegeben werden)")
         return None
 
 def generate_offer_pdf_with_main_templates(
@@ -625,6 +641,42 @@ def _sanitize_chart_title(raw_title: str) -> str:
         return cleaned
     except Exception:
         return raw_title
+
+# --- Vereinfachter Wrapper für alte/vereinfachte Aufrufe (erzwingt neuen Template-Flow) ---
+def generate_offer_pdf_simple(
+    project_data: Dict[str, Any],
+    analysis_results: Optional[Dict[str, Any]],
+    company_info: Dict[str, Any],
+    texts: Dict[str, str],
+    inclusion_options: Optional[Dict[str, Any]] = None,
+    **kwargs,
+) -> Optional[bytes]:
+    def _noop(*a, **k):
+        return None
+    inclusion_options = inclusion_options or {}
+    try:
+        return generate_offer_pdf_with_main_templates(
+            project_data=project_data,
+            analysis_results=analysis_results,
+            company_info=company_info,
+            company_logo_base64=(company_info or {}).get('logo_base64'),
+            selected_title_image_b64=None,
+            selected_offer_title_text="",
+            selected_cover_letter_text="",
+            sections_to_include=None,
+            inclusion_options=inclusion_options,
+            load_admin_setting_func=kwargs.get('load_admin_setting_func', _noop),
+            save_admin_setting_func=kwargs.get('save_admin_setting_func', _noop),
+            list_products_func=kwargs.get('list_products_func', _noop),
+            get_product_by_id_func=kwargs.get('get_product_by_id_func', _noop),
+            db_list_company_documents_func=kwargs.get('db_list_company_documents_func', lambda *a, **k: []),
+            active_company_id=kwargs.get('active_company_id'),
+            texts=texts,
+            use_modern_design=kwargs.get('use_modern_design', True),
+        )
+    except Exception as e:
+        print(f"WARN generate_offer_pdf_simple Fallback: {e}")
+        return None
 
 def _build_chart_kpi_html(chart_key: str, analysis: Dict[str, Any], texts: Dict[str, str]) -> str:
     """Erzeugt eine kompakte KPI-Zeile passend zum Diagramm. Leerstring, wenn nichts Passendes vorhanden ist."""
