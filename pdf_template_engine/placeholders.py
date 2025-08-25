@@ -9,6 +9,34 @@ für die PDF-Overlays zu erzeugen.
 from __future__ import annotations
 from typing import Dict, Any
 import re
+from functools import lru_cache
+
+@lru_cache(maxsize=64)
+def get_feed_in_tariff_eur_per_kwh(anlage_kwp: float, mode: str, load_admin_setting_func) -> float:
+	"""Ermittle gestaffelten Einspeisetarif in EUR/kWh anhand Admin-Settings.
+	mode: "parts" oder "full". Fallbacks gemäss gesetzlicher Staffelung.
+	"""
+	try:
+		tariffs_data = load_admin_setting_func("feed_in_tariffs", {}) or {}
+		tariffs_list = tariffs_data.get(mode, []) or []
+		for trf in tariffs_list:
+			try:
+				if trf.get("kwp_min", 0) <= anlage_kwp <= trf.get("kwp_max", 999):
+					return (trf.get("ct_per_kwh", 0) or 0) / 100.0
+			except Exception:
+				continue
+		# Fallback falls keine passende Staffel: heuristisch je nach Größe
+		if mode == "parts":
+			if anlage_kwp <= 10: return 0.0786
+			if anlage_kwp <= 40: return 0.0680
+			return 0.0556
+		else:  # full
+			if anlage_kwp <= 10: return 0.1247
+			if anlage_kwp <= 40: return 0.1045
+			return 0.1045
+	except Exception:
+		# Letzter Fallback: konservativer mittlerer Wert Teileinspeisung bis 40 kWp
+		return 0.0680
 
 # Abbildung von Beispieltexten (so wie sie in den YML-Dateien stehen) auf
 # logische Platzhalter-Keys. Diese Keys werden später mit echten Werten befüllt.
@@ -112,14 +140,27 @@ PLACEHOLDER_MAPPING.update({
 	# Ertrag über 20 Jahre (Zahl ohne Einheit, da "EUR" separat gelayoutet ist)
 	# In der Vorlage stehen hier zwei Zahlen (links/rechts). Wir verwenden sie jetzt für
 	# die Stromkosten-Projektion über 10 Jahre: links OHNE Erhöhung, rechts MIT Erhöhung.
-	"36.958": "cost_10y_with_increase_number",
-	"29.150": "cost_10y_no_increase_number",
+	# Alte Template-Zahlen (Kompatibilität älterer seite3.yml Versionen)
+	# (entfernt) "36.958": "cost_10y_with_increase_number",
+	# (entfernt) "29.150": "cost_10y_no_increase_number",
+	# Neue Template-Zahlen (aktuelles Layout) – Werte werden dynamisch ersetzt
+	# (entfernt) "46.296,00 €": "cost_10y_no_increase_number",
+	# (entfernt) "58.230,61 €": "cost_10y_with_increase_number",
+	# 20-Jahres Simulation (rechter Chart) – Template-Werte
+	# (entfernt) "92.592,00 €": "cost_20y_no_increase_number",
+	# (entfernt) "153.082,14 €": "cost_20y_with_increase_number",
+	# Einzel-Einsparungen Seite 3 (nur diese 4 dynamisch laut Vorgabe)
+	
 	# RENDITE: Prozentwerte werden durch dynamische Euro-Beträge ersetzt
-	"12,7%": "self_consumption_without_battery_eur",
-	"9,7%": "direct_grid_feed_in_eur",
 	# Batteriespeicher-Werte: 123% und 321% durch dynamische Euro-Beträge ersetzen
-	"123%": "battery_usage_savings_eur",
-	"321%": "battery_surplus_feed_in_eur",
+	# Aktuelles Template (keine Prozentwerte mehr, sondern Text-Spaltenüberschriften rechts) –
+	# wir mappen die blauen Kurz-Begriffe auf die dynamischen Geldwerte:
+	"Direkt": "self_consumption_without_battery_eur",
+	"Einspeisung": "direct_grid_feed_in_eur",
+	"Speichernutzung": "battery_usage_savings_eur",
+	"Überschuss": "battery_surplus_feed_in_eur",
+	"Gesamt": "total_annual_savings_eur",
+	"Verbrauch 32 Cent": "basis_tariff_text",
 	# Neue Platzhalter für die 4 Berechnungen im "Mit Batteriespeichersystem" Bereich
 	# Diese werden unter der Hauptüberschrift angezeigt
 	"Mit Batteriespeichersystem Text Line 1": "battery_direct_consumption_line",
@@ -127,8 +168,10 @@ PLACEHOLDER_MAPPING.update({
 	"Mit Batteriespeichersystem Text Line 3": "battery_surplus_feed_in_line",
 	"Mit Batteriespeichersystem Text Line 4": "total_savings_with_battery_line",
 	# Produktionskosten (ct/kWh) – basierend auf LCOE
-	"8,9 Cent": "lcoe_cent_per_kwh",
-	"13,5 Cent": "lcoe_cent_per_kwh",
+	# Gesamtwert-Zeile (fehlte zuvor im Mapping)
+	# Label "Einsparungen pro Jahr (gesamt)" soll statisch bleiben (kein Ersatz durch Zahl)
+	# Gesamtbetrag stattdessen auf Satz "Kapitalkosten sowie Investition und Unterhalt." legen
+	"Kapitalkosten sowie Investition und Unterhalt.": "annual_total_savings_year1_label",
 })
 
 # Seite 3: RENDITE – Erklärblock ersetzen durch dynamische Zeilen
@@ -136,20 +179,36 @@ PLACEHOLDER_MAPPING.update({
 	" Der interne Zinsfuß entspricht der mittleren, jährlichen": "rendite_line_1",
 	"Rendite Ihres Kapitals über die gesamte Laufzeit.": "rendite_line_2",
 	# Zusätzliche Platzhalter für die Beschriftungen/Labels
-	"Ohne Batteriespeichersystem": "without_battery_label",
-	"Mit Batteriespeichersystem": "with_battery_label",
+	"Ohne Batteriespeichersystem": "",
+	"Mit Batteriespeichersystem": "",
 })
 
-# Seite 3: Y-Achsen-Beschriftung des Diagramms (dynamisch skalieren)
-# Die Vorlage enthält fixe Werte 25.000, 20.000, 15.000, 10.000, 5.000, 0 –
-# wir ersetzen diese mit dynamischen Ticks basierend auf den berechneten 10J-Kosten.
+# Seite 3: Y-Achsen-Beschriftung des linken Diagramms (dynamisch skalieren)
+# Ältere Vorlage: 25.000 ... 0 ; Aktuelle Vorlage: 100.000 ... 0
 PLACEHOLDER_MAPPING.update({
+	# Altwerte
 	"25.000": "axis_tick_1_top",
 	"20.000": "axis_tick_2",
 	"15.000": "axis_tick_3",
 	"10.000": "axis_tick_4",
 	"5.000": "axis_tick_5",
 	"0": "axis_tick_6_bottom",
+	# Neue Werte (aktuelles Template seite3.yml)
+	"100.000": "axis_tick_1_top",
+	"80.000": "axis_tick_2",
+	"60.000": "axis_tick_3",
+	"40.000": "axis_tick_4",
+	"20.000": "axis_tick_5",
+})
+
+# Seite 3: Rechter 20-Jahres-Chart – Achsenticks (werden aktuell maskiert, aber Mapping für Vollständigkeit)
+PLACEHOLDER_MAPPING.update({
+	"154.000,00": "axis20_tick_1_top",
+	"123.200,00": "axis20_tick_2",
+	"92.400,00": "axis20_tick_3",
+	"61.600,00": "axis20_tick_4",
+	"30.800,00": "axis20_tick_5",
+	"0,00": "axis20_tick_6_bottom",
 })
 
 # Seite 4: Komponenten (Module / WR / Speicher)
@@ -580,7 +639,7 @@ def build_dynamic_data(
 	# Falls nur Teilwerte vorhanden sind: Haushalt + Heizung aufaddieren
 	if annual_consumption in (None, 0, 0.0):
 		try:
-			haushalt = float(project_details.get("annual_consumption_kwh_yr") or 0.0)
+			haushalt = float(project_details.get("annual_consumption_kwh") or 0.0)
 			heizung = float(project_details.get("consumption_heating_kwh_yr") or 0.0)
 			combo = haushalt + heizung
 			annual_consumption = combo if combo > 0 else annual_consumption
@@ -604,9 +663,6 @@ def build_dynamic_data(
 	# Falls Speicherkapazität bekannt: Batteriesummen überschreiben (heuristisch) mit Kapazität × 300
 	if battery_expected_annual_kwh and battery_expected_annual_kwh > 0:
 		charge_sum = float(battery_expected_annual_kwh)
-		
-		# Korrigierte Logik für Batterieentladung basierend auf tatsächlichem Verbrauchsmuster
-		# Erst mal den gleichen Wert setzen, wird später korrigiert
 		discharge_sc_sum = float(battery_expected_annual_kwh)
 
 	# Konsistenz- und Realismus-Korrekturen für Seite 2
@@ -742,6 +798,58 @@ def build_dynamic_data(
 		except Exception:
 			pass
 
+	# NEUE BERECHNUNGSLOGIK (User-Vorgabe) für Seite 2 & Seite 1 Kennzahlen
+	# "Meine Eigenverbrauchsquote" = Speicherladung Quote (oben) + direkter Stromverbrauch Quote (oben)
+	# Alternativ: 100% - Netzeinspeisung Quote (oben)
+	# "Mein erzielter Autarkiegrad" = Speichernutzung Quote (unten) + direkter Stromverbrauch Quote (unten)
+	# Alternativ: 100% - Stromnetz Quote (unten)
+	try:
+		def _parse_pct_str(val: Any) -> float:
+			if val is None:
+				return 0.0
+			try:
+				s = str(val).strip().replace('%', '').replace(',', '.').replace(' ', '')
+				return float(s) if s not in ('', '-', '.') else 0.0
+			except Exception:
+				return 0.0
+
+		# OBERES DIAGRAMM (Produktion)
+		battery_charge_pct = _parse_pct_str(result.get("battery_use_quote_prod_percent"))  # z.B. "41%"
+		# Direkter Verbrauch Prozent steht im Template als Zahl mit % Zeichen (im Beispiel 25%),
+		# durch vorheriges Mapping kann 'direct_consumption_quote_prod_percent' aktuell FEED zeigen.
+		# Der echte Direktverbrauchs-Prozentwert steckt (nach der Swapping-Logik) in 'feed_in_quote_prod_percent_number'.
+		direct_consumption_pct = _parse_pct_str(result.get("feed_in_quote_prod_percent_number"))  # Zahl ohne % -> direkt
+		feed_pct_swapped = _parse_pct_str(result.get("direct_consumption_quote_prod_percent"))  # tatsächliche Netzeinspeisung
+		# Primär-Definition: Speicher + Direkt
+		upper_self_consumption = battery_charge_pct + direct_consumption_pct
+		if upper_self_consumption <= 0.0 and feed_pct_swapped > 0.0:
+			# Fallback: 100 - Netzeinspeisung
+			upper_self_consumption = 100.0 - feed_pct_swapped
+		upper_self_consumption = max(0.0, min(100.0, upper_self_consumption))
+
+		# UNTERES DIAGRAMM (Verbrauch)
+		battery_cover_pct = _parse_pct_str(result.get("battery_cover_consumption_percent"))  # z.B. "Speichernutzung quote"
+		direct_cover_pct = _parse_pct_str(result.get("direct_cover_consumption_percent_number"))  # Zahl ohne %
+		grid_pct = _parse_pct_str(result.get("grid_consumption_rate_percent"))  # Stromnetz Quote
+		lower_autarky = battery_cover_pct + direct_cover_pct
+		if lower_autarky <= 0.0 and grid_pct > 0.0:
+			lower_autarky = 100.0 - grid_pct
+		lower_autarky = max(0.0, min(100.0, lower_autarky))
+
+		# Override der bestehenden Keys für Seite 2 Anzeige & Seite 1 Donuts
+		# self_consumption_percent -> "Meine Eigenverbrauchsquote"
+		# self_supply_rate_percent -> "Mein erzielter Autarkiegrad"
+		try:
+			from calculations import format_kpi_value as _fmt
+			result["self_consumption_percent"] = _fmt(upper_self_consumption, unit="%", precision=0)
+			result["self_supply_rate_percent"] = _fmt(lower_autarky, unit="%", precision=0)
+		except Exception:
+			# Fallback einfache Formatierung
+			result["self_consumption_percent"] = f"{int(round(upper_self_consumption))}%"
+			result["self_supply_rate_percent"] = f"{int(round(lower_autarky))}%"
+	except Exception:
+		pass
+
 	# Seite 3: LCOE als Cent/kWh, IRR
 	lcoe_eur_kwh = analysis_results.get("lcoe_euro_per_kwh")
 	if isinstance(lcoe_eur_kwh, (int, float)):
@@ -866,126 +974,115 @@ def build_dynamic_data(
 	except Exception:
 		pass
 
-	# Seite 3 – KORRIGIERTE Berechnungen für RENDITE-Bereich
+	# Seite 3 – NEUE BERECHNUNG (bereinigt, nur echte calculations.py Keys + neue dynamische Speicher-Keys)
 	try:
-		# 1. Stromtarif des Kunden berechnen (€/kWh)
-		# Priorität: direkte Tarifangabe -> aus analysis_results -> aus monatlichen Kosten -> Fallback
-		price_eur_per_kwh = 0.0
-		
-		# Direkte Tarifangabe aus project_details bevorzugen
-		if project_details and project_details.get("electricity_price_kwh"):
-			price_eur_per_kwh = parse_float(project_details.get("electricity_price_kwh"))
-		
-		# Aus analysis_results (bereits berechneter Wert)
-		if not price_eur_per_kwh and analysis_results:
-			price_eur_per_kwh = parse_float(analysis_results.get("aktueller_strompreis_fuer_hochrechnung_euro_kwh"))
-		
-		# Aus monatlichen Kosten berechnen (nur wenn kein direkter Tarif verfügbar)
-		if not price_eur_per_kwh:
-			monthly_household = parse_float(project_data.get("stromkosten_haushalt_euro_monat")) or 0.0
-			monthly_heating = parse_float(project_data.get("stromkosten_heizung_euro_monat")) or 0.0
-			annual_cost_total = (monthly_household + monthly_heating) * 12.0
-			
-			# Jahresverbrauch
-			annual_consumption = parse_float(project_data.get("annual_consumption_kwh")) or 3000.0
-			
-			# Stromtarif berechnen: Jahreskosten / Jahresverbrauch
-			if annual_consumption > 0 and annual_cost_total > 0:
-				price_eur_per_kwh = annual_cost_total / annual_consumption
-		
-		# Fallback
-		if not price_eur_per_kwh or price_eur_per_kwh <= 0:
-			price_eur_per_kwh = 0.37  # Fallback
-		
-		# 2. Werte aus Seite 2 der PDF holen
-		# Direkter Eigenverbrauch (oberes Diagramm)
-		direct_consumption_kwh = parse_float(analysis_results.get("direct_self_consumption_kwh")) or 2236.0
-		
-		# Netzeinspeisung
-		grid_feedin_kwh = parse_float(analysis_results.get("grid_feed_in_kwh")) or 3214.0
-		
-		# Batteriespeicherung (oberes Diagramm Seite 2)
-		battery_charge_kwh = parse_float(analysis_results.get("battery_charge_kwh"))
-		if battery_charge_kwh is None:
-			battery_charge_kwh = 3627.0  # Fallback nur wenn nicht gesetzt
-		
-		# Batterieentladung für Eigenverbrauch (unteres Diagramm Seite 2)
-		# Verwende den korrigierten Wert aus der Berechnung oben
-		if 'discharge_sc_sum' in locals() and discharge_sc_sum is not None:
-			battery_discharge_kwh = float(discharge_sc_sum)
-		else:
-			battery_discharge_kwh = parse_float(analysis_results.get("battery_discharge_for_sc_kwh")) or 1264.0
-		
-		# 3. Einspeisevergütung ermitteln
-		eeg_eur_per_kwh = 0.0786  # 7,86 ct für <10kWp Teileinspeisung (Fallback)
-		
+		# 1. Einspeisetarif bestimmen (Tarifblock gemäß Vorgabe; Admin-Override möglich)
+		eeg_eur_per_kwh = None
 		try:
-			# Anlagengröße
-			anlage_kwp = parse_float(analysis_results.get("anlage_kwp")) or 9.1
-			
-			# EEG-Tarife aus Admin-Settings
 			from database import load_admin_setting
 			fit = load_admin_setting("feed_in_tariffs", {})
-			mode = project_data.get("einspeise_art", "parts")  # parts oder full
-			
-			tariffs = fit.get(mode, [])
+			if not isinstance(fit, dict) or not fit:
+				fit = {
+					"parts": [
+						{"kwp_min": 0.0, "kwp_max": 10.0, "ct_per_kwh": 7.86},
+						{"kwp_min": 10.01, "kwp_max": 40.0, "ct_per_kwh": 6.80},
+						{"kwp_min": 40.01, "kwp_max": 100.0, "ct_per_kwh": 5.56},
+					],
+					"full": [
+						{"kwp_min": 0.0, "kwp_max": 10.0, "ct_per_kwh": 12.47},
+						{"kwp_min": 10.01, "kwp_max": 40.0, "ct_per_kwh": 10.45},
+						{"kwp_min": 40.01, "kwp_max": 100.0, "ct_per_kwh": 10.45},
+					],
+				}
+			mode = project_data.get("einspeise_art", "parts")
+			anlage_kwp = parse_float(analysis_results.get("anlage_kwp")) or parse_float(project_data.get("anlage_kwp")) or 0.0
+			tariffs = fit.get(mode, []) if isinstance(fit, dict) else []
+			chosen_tariff_band = None
 			for tariff in tariffs:
 				kwp_min = tariff.get("kwp_min", 0)
-				kwp_max = tariff.get("kwp_max", 999)
+				kwp_max = tariff.get("kwp_max", 999999)
 				if kwp_min <= anlage_kwp <= kwp_max:
-					eeg_eur_per_kwh = tariff.get("ct_per_kwh", 7.86) / 100.0
+					ct = tariff.get("ct_per_kwh", 7.86)
+					try:
+						ct = float(ct)
+					except Exception:
+						ct = 7.86
+					eeg_eur_per_kwh = ct / 100.0
+					chosen_tariff_band = {"mode": mode, "anlage_kwp": anlage_kwp, "kwp_min": kwp_min, "kwp_max": kwp_max, "ct_per_kwh": ct}
 					break
-		except:
+		except Exception:
 			pass
-		
-		# 4. BERECHNUNGEN nach Ihrer Spezifikation:
-		
-		# Berechnung 1: Einsparung durch Eigenverbrauch
-		# 2.236 kWh × 0,40 €/kWh = 894,40 €
-		savings_direct_consumption = direct_consumption_kwh * price_eur_per_kwh
-		
-		# Berechnung 2: Einnahmen aus Einspeisevergütung  
-		# 3.214 kWh × 7,86 ct = 252,62 €
-		revenue_grid_feedin = grid_feedin_kwh * eeg_eur_per_kwh
-		
-		# Berechnung 3: Einsparung durch Batterieladung
-		# 1.264 kWh × 0,40 €/kWh = 505,60 €
-		savings_battery_usage = battery_discharge_kwh * price_eur_per_kwh
-		
-		# Berechnung 4: Einsparung aus Batterieüberschuss
-		# (3.627 - 1.264) kWh × 7,86 ct = 1.363 kWh × 7,86 ct = 136,44 €
-		battery_surplus_kwh = max(0, battery_charge_kwh - battery_discharge_kwh)
-		savings_battery_surplus = battery_surplus_kwh * eeg_eur_per_kwh
-		
-		# Gesamteinsparungen
-		total_savings = savings_direct_consumption + revenue_grid_feedin + savings_battery_usage + savings_battery_surplus
-		
-		# Debug-Ausgabe
-		print(f"DEBUG Seite 3 Berechnungen (KORRIGIERT):")
-		print(f"  Stromtarif Kunde: {price_eur_per_kwh:.4f} €/kWh")
-		print(f"  Direktverbrauch: {direct_consumption_kwh} kWh")
-		print(f"  Netzeinspeisung: {grid_feedin_kwh} kWh")
-		print(f"  Batterieladung: {battery_charge_kwh} kWh")
-		print(f"  Batterieentladung: {battery_discharge_kwh} kWh")
-		print(f"  Batterieüberschuss: {battery_surplus_kwh} kWh")
-		print(f"  EEG-Tarif: {eeg_eur_per_kwh:.4f} €/kWh")
-		print(f"  1. Eigenverbrauch: {savings_direct_consumption:.2f} €")
-		print(f"  2. Netzeinspeisung: {revenue_grid_feedin:.2f} €")
-		print(f"  3. Batterienutzen: {savings_battery_usage:.2f} €")
-		print(f"  4. Batterie-Überschuss: {savings_battery_surplus:.2f} €")
-		print(f"  GESAMT: {total_savings:.2f} €")
-		
-		# Platzhalter für PDF befüllen
-		result["self_consumption_without_battery_eur"] = fmt_number(savings_direct_consumption, 2, "€")
-		result["direct_grid_feed_in_eur"] = fmt_number(revenue_grid_feedin, 2, "€")  
-		result["battery_usage_savings_eur"] = fmt_number(savings_battery_usage, 2, "€")
-		result["battery_surplus_feed_in_eur"] = fmt_number(savings_battery_surplus, 2, "€")
-		
-		# Gesamtsumme für "Einsparungen pro Jahr (gesamt)"
+		if not eeg_eur_per_kwh or eeg_eur_per_kwh <= 0:
+			ar_val = parse_float(analysis_results.get("einspeiseverguetung_eur_per_kwh"))
+			if ar_val and ar_val > 0:
+				eeg_eur_per_kwh = ar_val
+			else:
+				eeg_eur_per_kwh = 7.86 / 100.0
+
+		# 2. Strompreis herleiten (keine künstliche Rekonstruktion mehr)
+		price_eur_per_kwh = (
+			parse_float(analysis_results.get("aktueller_strompreis_fuer_hochrechnung_euro_kwh"))
+			or parse_float(analysis_results.get("electricity_price_eur_per_kwh"))
+			or parse_float(project_data.get("electricity_price_kwh"))
+			or parse_float(project_data.get("electricity_price_per_kwh"))
+			or 0.30
+		)
+
+		# 3. Rohdaten-Arrays (direkt aus calculations.py Result) – nur echte Keys
+		monthly_direct_sc = analysis_results.get("monthly_direct_self_consumption_kwh", []) or []
+		monthly_storage_charge = analysis_results.get("monthly_storage_charge_kwh", []) or []
+		monthly_storage_discharge = analysis_results.get("monthly_storage_discharge_for_sc_kwh", []) or []
+
+		# 4. Jahressummen
+		direct_kwh = sum(monthly_direct_sc) if monthly_direct_sc else 0.0
+		feedin_kwh = parse_float(analysis_results.get("netzeinspeisung_kwh")) or 0.0
+		speicher_ladung_kwh = sum(monthly_storage_charge) if monthly_storage_charge else 0.0
+		speicher_nutzung_kwh = sum(monthly_storage_discharge) if monthly_storage_discharge else 0.0
+		speicher_ueberschuss_kwh = max(0.0, speicher_ladung_kwh - speicher_nutzung_kwh)
+
+		# 5. Monetäre Bewertung nach Nutzerformeln
+		val_direct_money = direct_kwh * price_eur_per_kwh
+		val_feedin_money = feedin_kwh * eeg_eur_per_kwh
+		val_speicher_nutzung_money = speicher_nutzung_kwh * price_eur_per_kwh
+		val_speicher_ueberschuss_money = speicher_ueberschuss_kwh * eeg_eur_per_kwh
+		total_savings = val_direct_money + val_feedin_money + val_speicher_nutzung_money + val_speicher_ueberschuss_money
+
+		# 6. Neue explizite dynamische Speicher-Keys (zusätzlich zu bestehenden Platzhaltern für Rückwärtskompatibilität)
+		result["storage_usage_kwh"] = fmt_number(speicher_nutzung_kwh, 0, "kWh")
+		result["storage_surplus_kwh"] = fmt_number(speicher_ueberschuss_kwh, 0, "kWh")
+		result["storage_usage_value_eur"] = fmt_number(val_speicher_nutzung_money, 2, "€")
+		result["storage_surplus_value_eur"] = fmt_number(val_speicher_ueberschuss_money, 2, "€")
+
+		# 7. Bestehende Platzhalter befüllen
+		result["self_consumption_without_battery_eur"] = fmt_number(val_direct_money, 2, "€")
+		result["direct_grid_feed_in_eur"] = fmt_number(val_feedin_money, 2, "€")
+		result["battery_usage_savings_eur"] = fmt_number(val_speicher_nutzung_money, 2, "€")
+		result["battery_surplus_feed_in_eur"] = fmt_number(val_speicher_ueberschuss_money, 2, "€")
 		result["total_annual_savings_eur"] = fmt_number(total_savings, 2, "€")
-		
+
+		# 8. Linien-/Diagrammwerte (verweisen jetzt auf neue Variablen)
+		result["battery_direct_consumption_line"] = fmt_number(val_direct_money, 2, "€")
+		result["battery_storage_usage_line"] = fmt_number(val_speicher_nutzung_money, 2, "€")
+		result["battery_surplus_feed_in_line"] = fmt_number(val_speicher_ueberschuss_money, 2, "€")
+		result["total_savings_with_battery_line"] = fmt_number(total_savings, 2, "€")
+
+		# 9. KWh Zusatzinfos für Page 3
+		result["calc_grid_feed_in_kwh_page3"] = fmt_number(feedin_kwh, 0, "kWh")
+		result["calc_battery_discharge_kwh_page3"] = fmt_number(speicher_nutzung_kwh, 0, "kWh")
+		result["calc_battery_surplus_kwh_page3"] = fmt_number(speicher_ueberschuss_kwh, 0, "kWh")
+		result["annual_feed_in_revenue_eur"] = fmt_number(val_feedin_money, 2, "€")
+
+		# 10. Kompakte Debug-Ausgabe (reduziert)
+		print("DEBUG PAGE3 -> Preise & Tarife:")
+		print(f"  Strompreis (EUR/kWh): {price_eur_per_kwh:.4f} | EEG (EUR/kWh): {eeg_eur_per_kwh:.4f}")
+		if 'chosen_tariff_band' in locals() and chosen_tariff_band:
+			print(f"  Tarifwahl: {chosen_tariff_band}")
+		print("DEBUG PAGE3 -> Energieströme (kWh):")
+		print(f"  Direkt: {direct_kwh:.2f} | Einspeisung: {feedin_kwh:.2f} | Speicher Ladung: {speicher_ladung_kwh:.2f} | Nutzung: {speicher_nutzung_kwh:.2f} | Überschuss: {speicher_ueberschuss_kwh:.2f}")
+		print("DEBUG PAGE3 -> Geldwerte (€):")
+		print(f"  Direkt: {val_direct_money:.2f} | Einspeisung: {val_feedin_money:.2f} | Nutzung: {val_speicher_nutzung_money:.2f} | Überschuss: {val_speicher_ueberschuss_money:.2f} | Gesamt: {total_savings:.2f}")
 	except Exception as e:
-		print(f"ERROR in Seite 3 calculations: {e}")
+		print(f"ERROR in Seite 3 calculations (NEU): {e}")
 		import traceback
 		traceback.print_exc()
 
@@ -1816,15 +1913,50 @@ def build_dynamic_data(
 
 	# Seite 1 – neue dynamische Felder und statische Texte nach Kundenwunsch
 	# 1) Jährliche Einspeisevergütung in Euro (für Platz "Dachneigung")
-	try:
-		annual_feed_rev = (
-			analysis_results.get("annual_feedin_revenue_euro")
-			or analysis_results.get("annual_feed_in_revenue_year1")
-		)
-		if annual_feed_rev is not None:
-			result["annual_feed_in_revenue_eur"] = fmt_number(float(annual_feed_rev), 2, "€")
-	except Exception:
-		pass
+	#    Nur berechnen wenn nicht zuvor über Seite3 synchronisiert
+	if "annual_feed_in_revenue_eur" not in result:
+		try:
+			# Primär vorhandene Berechnung nehmen
+			annual_feed_rev = (
+				analysis_results.get("annual_feedin_revenue_euro")
+				or analysis_results.get("annual_feed_in_revenue_year1")
+			)
+			# Falls nicht vorhanden oder offensichtlich inkonsistent, neu berechnen
+			# Hole Netzeinspeisung (Seite 2 Wert) und ermittele EEG-Tarif erneut wie oben verwendet
+			grid_feedin_raw = analysis_results.get("grid_feed_in_kwh") or result.get("grid_feed_in_kwh")
+			feed_in_kwh_val = None
+			if grid_feedin_raw:
+				try:
+					feed_in_kwh_val = float(str(grid_feedin_raw).split()[0].replace('.', '').replace(',', '.')) if ' ' in str(grid_feedin_raw) else float(str(grid_feedin_raw).replace('.', '').replace(',', '.'))
+				except Exception:
+					try:
+						feed_in_kwh_val = float(re.sub(r"[^0-9,\.]", "", str(grid_feedin_raw)).replace(',', '.'))
+					except Exception:
+						feed_in_kwh_val = None
+			# EEG Tarif erneut bestimmen (gleiche Logik wie Seite3 oben)
+			try:
+				anlage_kwp_local = parse_float(analysis_results.get("anlage_kwp")) or 0.0
+				from database import load_admin_setting as _load_tar
+				fit_loc = _load_tar("feed_in_tariffs", {})
+				mode_loc = project_data.get("einspeise_art", "parts")
+				local_tariff = None
+				for trf in fit_loc.get(mode_loc, []):
+					if trf.get("kwp_min", 0) <= anlage_kwp_local <= trf.get("kwp_max", 999):
+						local_tariff = (trf.get("ct_per_kwh", 7.86) or 7.86) / 100.0
+						break
+				if local_tariff is None:
+					local_tariff = 0.068  # Fallback 6,8 ct
+			except Exception:
+				local_tariff = 0.068
+			# Neuberechnung wenn nötig
+			if feed_in_kwh_val is not None:
+				calc_rev = feed_in_kwh_val * local_tariff
+				if (annual_feed_rev is None) or (abs(calc_rev - float(annual_feed_rev)) > max(5.0, 0.2 * calc_rev)):
+					annual_feed_rev = calc_rev
+				if annual_feed_rev is not None:
+					result["annual_feed_in_revenue_eur"] = fmt_number(float(annual_feed_rev), 2, "€")
+		except Exception:
+			pass
 
 	# 2) MwSt.-Betrag (19% vom Netto-Endbetrag) für Platz "Solaranlage"
 	# Basis: bevorzugt total_investment_netto, sonst final_price (falls Netto), sonst subtotal_netto.
@@ -1855,5 +1987,84 @@ def build_dynamic_data(
 	result["static_dc_dachmontage"] = "DC Dachmontage"
 	#    c) Rechts neben Jahresertrag: „AC Installation | Inbetriebnahme“
 	result["static_ac_installation"] = "AC Installation | Inbetriebnahme"
+
+	# Seite 3: Basis-Parameter dynamisch füllen
+	try:
+		# Energieversorger Name (falls vorhanden)
+		provider = project_data.get("energy_supplier") or project_data.get("stromanbieter") or analysis_results.get("energy_supplier")
+		if provider:
+			result["basis_energy_supplier_name"] = str(provider)
+		# Wartung Prozent (z.B. 1 % Invest p.a.)
+		maint_pct = analysis_results.get("maintenance_costs_percent") or analysis_results.get("maintenance_percent_invest_pa")
+		if isinstance(maint_pct, (int,float)):
+			result["basis_maintenance_percent_invest"] = f"{maint_pct:.0f} % Invest. p.a."
+		# Verbrauchstarif Text (exakte €/kWh Anzeige mit 4 Nachkommastellen statt "Verbrauch 32 Cent")
+		price_eur_kwh = (
+			analysis_results.get("aktueller_strompreis_fuer_hochrechnung_euro_kwh")
+			or analysis_results.get("electricity_price_eur_per_kwh")
+			or analysis_results.get("electricity_price_kwh")
+			or analysis_results.get("electricity_price_per_kwh")
+		)
+		if isinstance(price_eur_kwh,(int,float)) and price_eur_kwh>0:
+			result["basis_tariff_text"] = f"{price_eur_kwh:.4f} €/kWh"
+		# PV Lebensdauer
+		lifetime = analysis_results.get("simulation_period_years") or project_data.get("simulation_period_years")
+		if isinstance(lifetime,(int,float)) and lifetime>0:
+			result["basis_pv_lifetime_years"] = f"{int(lifetime)} Jahre"
+		# Strompreissteigerung
+		inc_pct = analysis_results.get("electricity_price_increase_annual_percent") or project_data.get("electricity_price_increase_annual_percent")
+		if isinstance(inc_pct,(int,float)):
+			result["basis_price_increase_percent_text"] = f"{inc_pct:.2f} % jährlich"
+		# Eigenkapitalkosten
+		cost_cap = analysis_results.get("cost_of_capital_percent") or project_data.get("cost_of_capital_percent") or analysis_results.get("alternative_investment_interest_rate_percent")
+		if isinstance(cost_cap,(int,float)):
+			result["basis_cost_of_capital_percent"] = f"{cost_cap:.0f} %"
+	except Exception:
+		pass
+
+	# Seite 3: Einsparungs-/Ertragszeilen neu & exakt nach Nutzerformeln berechnen
+	try:
+		def _pf(v):
+			try:
+				if isinstance(v,(int,float)):
+					return float(v)
+				return float(str(v).replace(',','.'))
+			except Exception:
+				return None
+		curr_price = _pf(price_eur_kwh) or _pf(analysis_results.get("aktueller_strompreis_fuer_hochrechnung_euro_kwh")) or 0.0
+		direct_kwh = _pf(analysis_results.get("direct_self_consumption_kwh")) or _pf(analysis_results.get("annual_direct_self_consumption_kwh"))
+		if direct_kwh is None:
+			try:
+				eigenv_total = _pf(analysis_results.get("annual_self_consumption_kwh"))
+				batt_dis_tmp = _pf(analysis_results.get("battery_discharge_for_sc_kwh")) or 0.0
+				if eigenv_total is not None:
+					direct_kwh = max(0.0, eigenv_total - batt_dis_tmp)
+			except Exception:
+				pass
+		if direct_kwh is not None and curr_price>0:
+			result["annual_electricity_cost_savings_self_consumption_year1"] = fmt_number(direct_kwh*curr_price,2,"€")
+		feed_kwh = _pf(analysis_results.get("netzeinspeisung_kwh"))
+		feed_tariff = _pf(analysis_results.get("einspeiseverguetung_eur_per_kwh")) or _pf(analysis_results.get("feed_in_tariff_eur_per_kwh")) or _pf(analysis_results.get("feed_in_tariff_year1_eur_per_kwh"))
+		if feed_kwh is not None and feed_tariff is not None:
+			result["annual_feed_in_revenue_year1"] = fmt_number(feed_kwh*feed_tariff,2,"€")
+		batt_dis = _pf(analysis_results.get("battery_discharge_for_sc_kwh"))
+		if batt_dis is not None and curr_price>0:
+			result["annual_battery_discharge_value_year1"] = fmt_number(batt_dis*curr_price,2,"€")
+		batt_charge = _pf(analysis_results.get("battery_charge_kwh"))
+		if batt_charge is not None and batt_dis is not None and feed_tariff is not None:
+			surplus = max(0.0, batt_charge - batt_dis)
+			result["annual_battery_surplus_feed_in_value_year1"] = fmt_number(surplus*feed_tariff,2,"€")
+		parts=[]
+		for k in ["annual_electricity_cost_savings_self_consumption_year1","annual_feed_in_revenue_year1","annual_battery_discharge_value_year1","annual_battery_surplus_feed_in_value_year1"]:
+			val_s = result.get(k)
+			if val_s:
+				try:
+					parts.append(float(str(val_s).replace('.','').replace('€','').replace(' ','').replace(',','.')))
+				except Exception:
+					pass
+		if parts:
+			result["annual_total_savings_year1_label"] = fmt_number(sum(parts),2,"€")
+	except Exception:
+		pass
 
 	return result
